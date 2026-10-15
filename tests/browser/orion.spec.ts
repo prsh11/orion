@@ -200,3 +200,43 @@ test('sound opt-in previews audio and confirmed rewards play once', async ({ pag
     await expect(page.getByRole('button', { name: 'Save activity', exact: true })).toBeEnabled();
     expect(await notes()).toBe(3);
 });
+
+test('activity, habit, both quests, boss and level-up all play sequentially; mute cancels the queue', async ({ page }) => {
+    const state = fixture();
+    await mock(page, state);
+    await page.addInitScript(() => {
+        localStorage.setItem('orion-sound', 'on');
+        const original = AudioContext.prototype.createOscillator;
+        AudioContext.prototype.createOscillator = function () {
+            document.documentElement.dataset.soundNotes = String(Number(document.documentElement.dataset.soundNotes ?? 0) + 1);
+            return original.call(this);
+        };
+    });
+    let batch = 0;
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        batch++;
+        state.events.push(...['activity:1', 'habit:1', 'quest:1', 'quest:2', 'boss:1'].map((source, i) => ({ id: `${batch}:${i}`, source, xp: 10, attributes: {}, created_at: new Date().toISOString() })));
+        state.profile.xp = 675;
+        await route.fulfill({ json: { saved: true } });
+    });
+    const notes = () => page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0));
+    await page.goto('/');
+    await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
+    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+    await expect.poll(notes, { timeout: 1000 }).toBe(3);
+    await expect.poll(notes, { timeout: 8000 }).toBe(34);
+    // Clear the first queue, then freeze timers to test muting deterministically.
+    await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByLabel('Play reward sounds').uncheck();
+    await page.getByLabel('Play reward sounds').check();
+    expect(await notes()).toBe(37);
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
+    await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
+    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+    await expect.poll(notes).toBe(40);
+    await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByLabel('Play reward sounds').uncheck();
+    await page.clock.fastForward(10000);
+    expect(await notes()).toBe(40);
+});

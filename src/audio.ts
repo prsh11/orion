@@ -3,6 +3,8 @@
 
 const AudioFX = (() => {
     let ctx: AudioContext | null = null;
+    const queue: { play: () => void; duration: number }[] = [];
+    let queueTimer: ReturnType<typeof setTimeout> | undefined;
     let enabled = (() => {
         if (typeof window === 'undefined') return false;
         try { return localStorage.getItem('orion-sound') === 'on'; } catch { return false; }
@@ -68,8 +70,27 @@ const AudioFX = (() => {
         };
     }
 
+    function playNext() {
+        const cue = enabled ? queue.shift() : undefined;
+        if (!cue) { queueTimer = undefined; return; }
+        cue.play();
+        queueTimer = setTimeout(playNext, cue.duration);
+    }
+
     return {
-        setEnabled(value: boolean) { enabled = value; },
+        setEnabled(value: boolean) {
+            enabled = value;
+            if (!value) {
+                queue.length = 0;
+                clearTimeout(queueTimer);
+                queueTimer = undefined;
+            }
+        },
+        enqueue(cues: { play: () => void; duration: number }[]) {
+            if (!enabled) return;
+            queue.push(...cues);
+            if (queueTimer === undefined) playNext();
+        },
         unlock() {
             if (!enabled) return;
             try { getCtx(); } catch { /* Audio is optional on unsupported browsers. */ }
@@ -147,8 +168,8 @@ const AudioFX = (() => {
 
         habitDone() {
             play((ctx) => {
-                tone(880, 'sine', 0.2, 0, 0.2)(ctx);
-                tone(1109, 'sine', 0.3, 0.08, 0.15)(ctx);
+                tone(740, 'sine', 0.12, 0, 0.18)(ctx);
+                tone(988, 'sine', 0.24, 0.12, 0.16)(ctx);
             });
         },
 
@@ -193,19 +214,9 @@ const AudioFX = (() => {
 
         questComplete() {
             play((ctx) => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(100, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.15);
-                gain.gain.setValueAtTime(0.1, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(ctx.currentTime);
-                osc.stop(ctx.currentTime + 0.2);
-                [392, 523, 659].forEach((f) => {
-                    tone(f, 'triangle', 0.4, 0.15, 0.15)(ctx);
+                [659, 988, 1319].forEach((f, i) => {
+                    tone(f, 'triangle', 0.35, i * 0.14, 0.16)(ctx);
+                    tone(f * 2, 'sine', 0.2, i * 0.14, 0.05)(ctx);
                 });
             });
         },

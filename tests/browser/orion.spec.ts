@@ -150,3 +150,53 @@ test('email signup, sign-in, sign-out, and reset requests are wired to Auth', as
     await page.getByRole('button', { name: 'Send reset link' }).click();
     await expect(page.getByRole('status')).toContainText('password reset link');
 });
+
+test('sound opt-in previews audio and confirmed rewards play once', async ({ page }) => {
+    const state = fixture();
+    await mock(page, state);
+    await page.addInitScript(() => {
+        const original = AudioContext.prototype.createOscillator;
+        AudioContext.prototype.createOscillator = function () {
+            document.documentElement.dataset.soundNotes = String(Number(document.documentElement.dataset.soundNotes ?? 0) + 1);
+            return original.call(this);
+        };
+    });
+    let sequence = 0;
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const body = route.request().postDataJSON();
+        if (body.action === 'activity') {
+            sequence++;
+            state.events.push({ id: String(sequence), source: 'activity:' + body.command_id, xp: 10, attributes: {}, created_at: new Date().toISOString() });
+            state.profile.xp += 10;
+        }
+        await route.fulfill({ json: { saved: true } });
+    });
+    const notes = () => page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0));
+    await page.goto('/');
+    await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
+    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Save activity', exact: true })).toBeEnabled();
+    expect(await notes()).toBe(0);
+    await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Test sound', exact: true })).toBeDisabled();
+    await page.getByLabel('Play reward sounds').check();
+    expect(await notes()).toBe(3);
+    await page.getByRole('button', { name: 'Test sound', exact: true }).click();
+    expect(await notes()).toBe(6);
+    await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
+    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+    await expect.poll(notes).toBe(9);
+    await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
+    expect(await notes()).toBe(9);
+    await page.reload();
+    await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page.getByLabel('Play reward sounds')).toBeChecked();
+    expect(await notes()).toBe(0);
+    await page.getByRole('button', { name: 'Test sound', exact: true }).click();
+    expect(await notes()).toBe(3);
+    await page.getByLabel('Play reward sounds').uncheck();
+    await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
+    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Save activity', exact: true })).toBeEnabled();
+    expect(await notes()).toBe(3);
+});

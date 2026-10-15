@@ -6,6 +6,7 @@ import type { Command, Snapshot } from './types';
 import { CommandError, sendCommand, snapshot, supabase } from './client';
 import { levelFor } from './logic';
 import AudioFX from '../audio';
+import { playSnapshotSound } from './sounds';
 
 type Action = { type: 'busy' } | { type: 'snapshot'; data: Snapshot } | { type: 'error'; message: string; pending?: Command } | { type: 'notice'; text: string } | { type: 'dismiss' } | { type: 'pending'; command: Command | null };
 function reducer(state: OrionState, action: Action): OrionState {
@@ -45,14 +46,20 @@ export function OrionProvider({ userId, children }: { userId: string; children: 
         return { data: null, busy: false, error: null, pending, notices: [] };
     });
     const inFlight = useRef(false);
+    const confirmedSnapshot = useRef<Snapshot | null>(null);
+    const acceptSnapshot = useCallback((data: Snapshot, personalRecord = false) => {
+        playSnapshotSound(confirmedSnapshot.current, data, personalRecord);
+        confirmedSnapshot.current = data;
+        dispatch({ type: 'snapshot', data });
+    }, []);
     const refresh = useCallback(async () => {
         if (inFlight.current) return;
         inFlight.current = true;
         dispatch({ type: 'busy' });
-        try { dispatch({ type: 'snapshot', data: await snapshot() }); }
+        try { acceptSnapshot(await snapshot()); }
         catch (error) { dispatch({ type: 'error', message: error instanceof Error ? error.message : 'Connection failed. Try refreshing.' }); }
         finally { inFlight.current = false; }
-    }, []);
+    }, [acceptSnapshot]);
     const execute = useCallback(async (command: Command) => {
         if (inFlight.current) return false;
         inFlight.current = true;
@@ -73,9 +80,8 @@ export function OrionProvider({ userId, children }: { userId: string; children: 
                 await supabase?.auth.signOut();
                 window.location.reload(); return true;
             }
-            dispatch({ type: 'snapshot', data: await snapshot() });
+            acceptSnapshot(await snapshot(), result.personal_record);
             dispatch({ type: 'notice', text: result.personal_record ? 'Saved. New personal record!' : 'Saved to your account' });
-            try { if (localStorage.getItem('orion-sound') === 'on') AudioFX.achievement(); } catch { /* Sound is optional. */ }
             return true;
         } catch (error) {
             const retryable = !confirmed && (!(error instanceof CommandError) || error.retryable);
@@ -86,11 +92,21 @@ export function OrionProvider({ userId, children }: { userId: string; children: 
             dispatch({ type: 'error', message: confirmed ? 'Saved successfully. Refresh to load the latest progress.' : `${error instanceof Error ? error.message : 'Save failed'}. Your draft is kept.`, ...(retryable ? { pending: command } : {}) });
             return confirmed;
         } finally { inFlight.current = false; }
-    }, [pendingKey, userId]);
+    }, [acceptSnapshot, pendingKey, userId]);
     const command = useCallback(async (action: string, payload: Record<string, unknown>) => {
         if (state.pending) { dispatch({ type: 'error', message: 'Retry the pending request before another save.' }); return false; }
         return execute({ id: crypto.randomUUID(), action, payload });
     }, [execute, state.pending]);
+    useEffect(() => {
+        // Resume audio inside a real gesture, before an asynchronous save returns.
+        const unlock = () => AudioFX.unlock();
+        window.addEventListener('pointerdown', unlock, true);
+        window.addEventListener('keydown', unlock, true);
+        return () => {
+            window.removeEventListener('pointerdown', unlock, true);
+            window.removeEventListener('keydown', unlock, true);
+        };
+    }, []);
     useEffect(() => {
         void refresh();
         const focus = () => { void refresh(); };

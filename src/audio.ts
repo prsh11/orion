@@ -3,7 +3,10 @@
 
 const AudioFX = (() => {
     let ctx: AudioContext | null = null;
-    let enabled = true;
+    let enabled = (() => {
+        if (typeof window === 'undefined') return false;
+        try { return localStorage.getItem('orion-sound') === 'on'; } catch { return false; }
+    })();
 
     function getCtx() {
         if (!ctx) {
@@ -66,6 +69,11 @@ const AudioFX = (() => {
     }
 
     return {
+        setEnabled(value: boolean) { enabled = value; },
+        unlock() {
+            if (!enabled) return;
+            try { getCtx(); } catch { /* Audio is optional on unsupported browsers. */ }
+        },
         toggle() {
             enabled = !enabled;
             return enabled;
@@ -114,6 +122,19 @@ const AudioFX = (() => {
                     tone(f, 'triangle', 0.8, 0.5, 0.12)(ctx);
                 });
                 noise(0.5, 0.5, 0.06, 8000)(ctx);
+            });
+        },
+
+        bossVictory() {
+            play((ctx) => {
+                [196, 294, 392, 494, 587, 784].forEach((f, i) => tone(f, 'triangle', 0.45, i * 0.1, 0.15)(ctx));
+                noise(0.3, 0.5, 0.06, 4000)(ctx);
+            });
+        },
+
+        bossFailure() {
+            play((ctx) => {
+                [330, 294, 220, 165].forEach((f, i) => tone(f, 'triangle', 0.3, i * 0.13, 0.12)(ctx));
             });
         },
 

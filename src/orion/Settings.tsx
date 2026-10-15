@@ -5,6 +5,7 @@ import ProfileForm from './ProfileForm';
 import { dayKey, fromMetres, pace } from './logic';
 import { loadTheme, saveTheme } from '../theme';
 import { parseSave } from '../save';
+import AudioFX from '../audio';
 
 export function Analytics({ compact = false }: { compact?: boolean }) {
     const { data } = useOrion();
@@ -24,7 +25,7 @@ export function Analytics({ compact = false }: { compact?: boolean }) {
 export function Settings() {
     const { data, command, busy } = useOrion();
     const [theme, setTheme] = useState(loadTheme);
-    const [sound, setSound] = useState(() => { try { return localStorage.getItem('orion-sound') === 'on'; } catch { return false; } });
+    const [sound, setSound] = useState(() => AudioFX.isEnabled());
     const [message, setMessage] = useState('');
     const [deleting, setDeleting] = useState(false);
     const [legacy] = useState(() => { try { const raw = localStorage.getItem('fitquest-save-v1'); return raw ? parseSave(raw) : null; } catch { return null; } });
@@ -36,7 +37,7 @@ export function Settings() {
         const url = URL.createObjectURL(new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' }));
         const link = document.createElement('a'); link.href = url; link.download = 'orion-account.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
-    return <><section className="panel"><h2>Player preferences</h2><ProfileForm /></section><section className="panel"><h2>Appearance and sound</h2><div className="form-grid"><label>Appearance<select value={theme} onChange={e => { const t = e.target.value === 'light' ? 'light' : 'dark'; setTheme(t); saveTheme(t); }}><option value="dark">Dark System</option><option value="light">Light System</option></select></label><label className="check-label"><input type="checkbox" checked={sound} onChange={e => { setSound(e.target.checked); try { localStorage.setItem('orion-sound', e.target.checked ? 'on' : 'off'); } catch { setMessage('Sound preference could not be stored.'); } }} />Play reward sounds</label></div><p className="muted">Animations follow your device’s reduced-motion preference.</p></section>
+    return <><section className="panel"><h2>Player preferences</h2><ProfileForm /></section><section className="panel"><h2>Appearance and sound</h2><div className="form-grid"><label>Appearance<select value={theme} onChange={e => { const t = e.target.value === 'light' ? 'light' : 'dark'; setTheme(t); saveTheme(t); }}><option value="dark">Dark System</option><option value="light">Light System</option></select></label><label className="check-label"><input type="checkbox" checked={sound} onChange={e => { setSound(e.target.checked); AudioFX.setEnabled(e.target.checked); if (e.target.checked) { AudioFX.unlock(); AudioFX.success(); } try { localStorage.setItem('orion-sound', e.target.checked ? 'on' : 'off'); } catch { setMessage('Sound preference could not be stored.'); } }} />Play reward sounds</label></div><button disabled={!sound} onClick={() => { AudioFX.unlock(); AudioFX.success(); }}>Test sound</button><p className="muted">Animations follow your device’s reduced-motion preference.</p></section>
         <section className="panel"><h2>Bring your history</h2>{data.profile.imported ? <p>Your previous browser save was imported. Its original achievements and historical records are included in your account export.</p> : legacy ? <><p>A previous browser save is available: {legacy.player.xp} XP, {legacy.workouts.length} workouts, {legacy.achievements.length} achievements. Import once; no historical sets or rewards are invented. Your browser copy stays intact.</p><button disabled={busy} onClick={() => { void command('import', { save: legacy }); }}>Import browser save</button></> : <p className="muted">No previous browser save found on this device.</p>}</section>
         <section className="panel"><h2>Your private data</h2><p>Export your profile, tracking history, quests, missions, progression events, and imported records.</p><div className="button-row"><button onClick={() => { void exportData(); }}>Export account data</button><button onClick={() => { void supabase?.auth.signOut().then(({ error }) => { if (error) setMessage(error.message); }); }}>Sign out</button><button className="danger" onClick={() => setDeleting(true)}>Delete account</button></div>{message && <p role="status" className="feedback">{message}</p>}
         {deleting && <form className="feedback" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); void command('delete_account', { confirmation: f.get('confirmation') }); }}><p>This permanently deletes your account and all server records. Export first if you want a copy.</p><label>Type DELETE to confirm<input name="confirmation" required pattern="DELETE" autoComplete="off" /></label><div className="button-row"><button className="danger" disabled={busy}>Permanently delete account</button><button type="button" onClick={() => setDeleting(false)}>Cancel</button></div></form>}</section>

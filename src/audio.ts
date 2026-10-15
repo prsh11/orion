@@ -1,9 +1,14 @@
-/* ===== FitQuest Audio Engine ===== */
+/* Orion audio engine. Sounds play only after explicit opt-in. */
 /* All sounds synthesized via Web Audio API — no external files needed */
 
 const AudioFX = (() => {
     let ctx: AudioContext | null = null;
-    let enabled = true;
+    const queue: { play: () => void; duration: number }[] = [];
+    let queueTimer: ReturnType<typeof setTimeout> | undefined;
+    let enabled = (() => {
+        if (typeof window === 'undefined') return false;
+        try { return localStorage.getItem('orion-sound') === 'on'; } catch { return false; }
+    })();
 
     function getCtx() {
         if (!ctx) {
@@ -65,7 +70,31 @@ const AudioFX = (() => {
         };
     }
 
+    function playNext() {
+        const cue = enabled ? queue.shift() : undefined;
+        if (!cue) { queueTimer = undefined; return; }
+        cue.play();
+        queueTimer = setTimeout(playNext, cue.duration);
+    }
+
     return {
+        setEnabled(value: boolean) {
+            enabled = value;
+            if (!value) {
+                queue.length = 0;
+                clearTimeout(queueTimer);
+                queueTimer = undefined;
+            }
+        },
+        enqueue(cues: { play: () => void; duration: number }[]) {
+            if (!enabled) return;
+            queue.push(...cues);
+            if (queueTimer === undefined) playNext();
+        },
+        unlock() {
+            if (!enabled) return;
+            try { getCtx(); } catch { /* Audio is optional on unsupported browsers. */ }
+        },
         toggle() {
             enabled = !enabled;
             return enabled;
@@ -117,6 +146,19 @@ const AudioFX = (() => {
             });
         },
 
+        bossVictory() {
+            play((ctx) => {
+                [196, 294, 392, 494, 587, 784].forEach((f, i) => tone(f, 'triangle', 0.45, i * 0.1, 0.15)(ctx));
+                noise(0.3, 0.5, 0.06, 4000)(ctx);
+            });
+        },
+
+        bossFailure() {
+            play((ctx) => {
+                [330, 294, 220, 165].forEach((f, i) => tone(f, 'triangle', 0.3, i * 0.13, 0.12)(ctx));
+            });
+        },
+
         press() {
             play((ctx) => {
                 tone(200, 'sine', 0.1, 0, 0.25)(ctx);
@@ -126,8 +168,8 @@ const AudioFX = (() => {
 
         habitDone() {
             play((ctx) => {
-                tone(880, 'sine', 0.2, 0, 0.2)(ctx);
-                tone(1109, 'sine', 0.3, 0.08, 0.15)(ctx);
+                tone(740, 'sine', 0.12, 0, 0.18)(ctx);
+                tone(988, 'sine', 0.24, 0.12, 0.16)(ctx);
             });
         },
 
@@ -172,19 +214,9 @@ const AudioFX = (() => {
 
         questComplete() {
             play((ctx) => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(100, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.15);
-                gain.gain.setValueAtTime(0.1, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(ctx.currentTime);
-                osc.stop(ctx.currentTime + 0.2);
-                [392, 523, 659].forEach((f) => {
-                    tone(f, 'triangle', 0.4, 0.15, 0.15)(ctx);
+                [659, 988, 1319].forEach((f, i) => {
+                    tone(f, 'triangle', 0.35, i * 0.14, 0.16)(ctx);
+                    tone(f * 2, 'sine', 0.2, i * 0.14, 0.05)(ctx);
                 });
             });
         },

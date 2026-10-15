@@ -1,0 +1,69 @@
+import { useEffect, useState } from 'react';
+import type { ReactNode, FormEvent } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from './client';
+import { OrionProvider } from './store';
+
+export default function Auth({ children }: { children: ReactNode }) {
+    const [session, setSession] = useState<Session | null>(null);
+    const [loading, setLoading] = useState(Boolean(supabase));
+    const [mode, setMode] = useState<'signin' | 'signup' | 'reset' | 'password'>('signin');
+    const [message, setMessage] = useState('');
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        if (!supabase) return;
+        let active = true;
+        void supabase.auth.getSession().then(({ data, error }) => { if (active) { setSession(data.session); setLoading(false); if (error) setMessage(error.message); } });
+        const { data } = supabase.auth.onAuthStateChange((event, current) => {
+            if (event === 'PASSWORD_RECOVERY') setMode('password');
+            setSession(current); setLoading(false);
+        });
+        return () => { active = false; data.subscription.unsubscribe(); };
+    }, []);
+    async function submit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!supabase) return;
+        const form = new FormData(event.currentTarget);
+        const email = String(form.get('email') ?? '');
+        const password = String(form.get('password') ?? '');
+        setBusy(true); setMessage('');
+        try {
+            const redirectTo = window.location.origin + window.location.pathname;
+            const response = mode === 'signup' ? await supabase.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } })
+                : mode === 'reset' ? await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+                    : mode === 'password' ? await supabase.auth.updateUser({ password }) : await supabase.auth.signInWithPassword({ email, password });
+            if (response.error) throw response.error;
+            if (mode === 'signup') setMessage('Check your email to confirm your account, then sign in.');
+            if (mode === 'reset') setMessage('If an account exists, a password reset link is on its way.');
+            if (mode === 'password') { setMode('signin'); setMessage('Password updated.'); }
+        } catch (error) { setMessage(error instanceof Error ? error.message : 'Connection failed. Try again.'); }
+        finally { setBusy(false); }
+    }
+    if (loading) return <main className="auth-page"><p role="status">Connecting to your System…</p></main>;
+    if (session && mode !== 'password') return <OrionProvider key={session.user.id} userId={session.user.id}>{children}</OrionProvider>;
+    return <main className="auth-page">
+        <a className="wordmark" href="/" aria-label="Orion home"><OrionMark />orion<span>Life, leveled.</span></a>
+        <div className="auth-layout">
+            <section className="auth-intro"><div className="system-rule" /><h1>Your next chapter<br />starts with a quest.</h1><p>Train your body. Make space for your mind. Turn the things you do each day into a character that grows with you.</p>
+                <div className="constellation" aria-hidden="true"><svg viewBox="0 0 400 300"><path d="M78 32 270 60 225 140 190 155 160 170 112 260 322 240 225 140M78 32 160 170" />{[[78,32],[270,60],[225,140],[190,155],[160,170],[112,260],[322,240]].map(([x,y],i)=><circle key={i} cx={x} cy={y} r={i===3?7:4}/>)}</svg></div>
+                <p className="muted">Six attributes. Your own pace. Private by default.</p>
+            </section>
+            <section className="panel auth-panel">
+                {!supabase ? <><h2>Connect your System</h2><p>Orion needs a Supabase project to securely save your progress across devices.</p><ol><li>Apply the migration in <code>supabase/migrations</code>.</li><li>Copy <code>.env.example</code> to <code>.env.local</code> and set the public project URL and key.</li><li>Restart the development server.</li></ol><p className="muted">See README.md for authentication, email, and deployment setup. Your previous browser save stays on this device for import after signup.</p></> : <>
+                    <h2>{({ signin: 'Welcome back, player', signup: 'Begin your story', reset: 'Reset your password', password: 'Choose a new password' })[mode]}</h2>
+                    <p className="muted">{mode === 'signup' ? 'Create a private account. No leaderboard, no comparison.' : 'Your progress follows you across devices.'}</p>
+                    <form onSubmit={event => { void submit(event); }}>
+                        {mode !== 'password' && <label>Email<input name="email" type="email" autoComplete="email" required /></label>}
+                        {mode !== 'reset' && <label>Password<input name="password" type="password" minLength={8} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required /></label>}
+                        <button className="primary" disabled={busy}>{busy ? 'Connecting…' : ({ signin: 'Sign in', signup: 'Create account', reset: 'Send reset link', password: 'Save password' })[mode]}</button>
+                    </form>
+                    {message && <p role="status" className="feedback">{message}</p>}
+                    <div className="button-row">{mode !== 'signin' && <button className="text-button" onClick={() => setMode('signin')}>Back to sign in</button>}{mode === 'signin' && <><button className="text-button" onClick={() => setMode('signup')}>Create an account</button><button className="text-button" onClick={() => setMode('reset')}>Forgot password?</button></>}</div>
+                </>}
+            </section>
+        </div>
+    </main>;
+}
+export function OrionMark() {
+    return <svg className="orion-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="m10 5 22 4-7 13-7 3-6 10 22-3-9-10L10 5Z" stroke="currentColor" strokeWidth="1.2" />{[[10,5],[32,9],[25,22],[18,25],[12,35],[34,32]].map(([x,y],i)=><circle key={i} cx={x} cy={y} r="2" fill="currentColor"/>)}</svg>;
+}

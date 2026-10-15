@@ -59,8 +59,10 @@ git commit -m "feat(workouts): add workout history"
 ```
 
 Run `pnpm lint` and `pnpm build` for code changes before merging. The lint command
-includes strict TypeScript checking and allows no Oxlint warnings. No test runner
-is currently configured.
+includes strict TypeScript checking and allows no Oxlint warnings. Run `pnpm test`
+for progression and database tests, and `pnpm test:e2e` for browser checks.
+See README.md for the optional multi-connection database suite and the live
+two-account checks required before production signup.
 
 Include `pnpm-lock.yaml` with dependency changes. Do not commit `node_modules`,
 `dist`, environment secrets, or local agent configuration. `.env.example` may

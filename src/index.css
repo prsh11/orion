@@ -1,85 +1,241 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap');
 :root {
-    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
-    color: var(--text);
-    background: var(--bg);
-    font-synthesis: none;
-    text-rendering: optimizeLegibility;
-    --bg: #edf2f7;
-    --bg-panel: #ffffff;
-    --bg-card: #f4f7fa;
-    --border: #d4dee8;
-    --text: #193047;
-    --text-dim: #52667a;
-    --accent: #244bd7;
-    --success: #23766a;
-    --xp: #244bd7;
-    --danger: #b82f44;
-    --gold: #926014;
-    color-scheme: light;
-    --brand: #244bd7;
-    --border-soft: #e0e6ef;
-    --line: #e8edf3;
-    --accent-soft: #dce5ff;
-    --track-muted: #d5dfec;
-    --chart: #bdccf4;
-    --placeholder: #607287;
-    --secondary: #e9eef7;
-    --secondary-hover: #dce5f4;
-    --success-soft: #edf5f3;
-    --success-text: #345e57;
-    --success-border: #b7d3cb;
-    --success-hover: #e1efeb;
-    --check-border: #a7b8c9;
-    --danger-soft: #fff0f1;
-    --gold-soft: #fff8e9;
-    --gold-border: #d8b57a;
-    --toast-bg: #193047;
-    --toast-text: #ffffff;
-    --display-font: 'Franklin Gothic Medium', 'Arial Narrow', 'Trebuchet MS', sans-serif;
+    font-family:'Barlow','Segoe UI',sans-serif;
+    color-scheme:dark;
+    --bg:#080f20;
+    --surface:#101b30;
+    --surface-raised:#16233b;
+    --text:#e8f0ff;
+    --muted:#9baecb;
+    --line:#293c58;
+    --cyan:#6fe4f2;
+    --violet:#c4a3ff;
+    --amber:#ffc878;
+    --danger:#ffabae;
+    font-synthesis:none;
+    text-rendering:optimizeLegibility;
+    -webkit-font-smoothing:antialiased;
+    color:var(--text);
+    background:var(--bg);
 }
-[data-theme='dark'] {
-    color-scheme: dark;
-    --bg: #101d2e;
-    --bg-panel: #192a3e;
-    --bg-card: #20344a;
-    --border: #405570;
-    --border-soft: #30465e;
-    --line: #30465e;
-    --text: #edf3fb;
-    --text-dim: #b4c3d5;
-    --accent: #a6bcff;
-    --accent-soft: #293f73;
-    --track-muted: #354b68;
-    --chart: #5674b4;
-    --placeholder: #acbdd0;
-    --secondary: #2b4059;
-    --secondary-hover: #354f70;
-    --success: #89d5bf;
-    --success-soft: #203e3b;
-    --success-text: #b7dfd4;
-    --success-border: #486e63;
-    --success-hover: #2b5148;
-    --check-border: #8198b3;
-    --danger: #ffabb8;
-    --danger-soft: #512b3a;
-    --gold: #edc77e;
-    --gold-soft: #3c3526;
-    --gold-border: #877045;
-    --toast-bg: #e1eaff;
-    --toast-text: #193047;
+
+:root[data-theme='light'] {
+    color-scheme:light;
+    --bg:#eff3f9;
+    --surface:#fff;
+    --surface-raised:#e6edf7;
+    --text:#14273e;
+    --muted:#4c6078;
+    --line:#bccbdb;
+    --cyan:#086a80;
+    --violet:#7041ad;
+    --amber:#855000;
+    --danger:#ad2633;
 }
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; line-height: 1.5; }
-button, input, select { font: inherit; }
-button { cursor: pointer; touch-action: manipulation; }
-button, input, select { -webkit-tap-highlight-color: transparent; }
-button:disabled { cursor: not-allowed; opacity: .55; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-    outline: 3px solid var(--accent);
-    outline-offset: 4px;
+
+* {
+    box-sizing:border-box;
 }
-h1, h2, h3, p { margin: 0; }
-::selection { background: #cbd8ff; color: #193047; }
-@media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+
+body {
+    margin:0;
+    min-width:320px;
+}
+
+button,input,select,textarea {
+    font:inherit;
+}
+
+button {
+    cursor:pointer;
+    border:1px solid var(--line);
+    background:var(--surface-raised);
+    color:var(--text);
+    border-radius:5px;
+    padding:.7rem 1rem;
+    font-weight:600;
+}
+
+button:disabled {
+    cursor:default;
+    opacity:.55;
+}
+
+button:hover:not(:disabled) {
+    border-color:var(--cyan);
+}
+
+a {
+    color:var(--cyan);
+}
+
+:focus-visible {
+    outline:3px solid var(--cyan);
+    outline-offset:4px;
+}
+
+h1,h2,h3,p {
+    margin-top:0;
+    overflow-wrap:anywhere;
+}
+
+h1,h2 {
+    font-family:'Barlow Condensed','Arial Narrow',sans-serif;
+}
+
+h1 {
+    font-size:clamp(2.5rem,5vw,4.5rem);
+    font-weight:600;
+    line-height:1.03;
+    letter-spacing:-.02em;
+}
+
+h2 {
+    font-size:1.8rem;
+    font-weight:600;
+    margin-bottom:1rem;
+}
+
+h3 {
+    font-size:1.1rem;
+    font-weight:600;
+    margin-bottom:.6rem;
+}
+
+p {
+    line-height:1.6;
+    max-width:75ch;
+}
+
+small {
+    font-size:.8rem;
+}
+
+label {
+    display:flex;
+    flex-direction:column;
+    gap:.5rem;
+    font-size:.9rem;
+    font-weight:500;
+}
+
+input,select,textarea {
+    width:100%;
+    border:1px solid var(--line);
+    border-radius:4px;
+    background:var(--bg);
+    color:var(--text);
+    padding:.75rem;
+    min-height:44px;
+}
+
+textarea {
+    resize:vertical;
+}
+
+input[type='checkbox'] {
+    width:18px;
+    min-height:18px;
+    accent-color:var(--cyan);
+}
+
+fieldset {
+    border:1px solid var(--line);
+    padding:1rem;
+    margin:1rem 0;
+    min-width:0;
+}
+
+legend {
+    padding:0 .5rem;
+}
+
+form {
+    display:grid;
+    gap:1.2rem;
+}
+
+table {
+    width:100%;
+    border-collapse:collapse;
+    text-align:left;
+}
+
+th,td {
+    padding:.8rem;
+    border-bottom:1px solid var(--line);
+}
+
+caption {
+    text-align:left;
+    padding:1rem 0;
+    color:var(--muted);
+}
+
+summary {
+    cursor:pointer;
+    padding:1rem 0;
+    color:var(--cyan);
+}
+
+ul,ol {
+    padding-left:1.3rem;
+    line-height:1.8;
+}
+
+code {
+    overflow-wrap:anywhere;
+}
+
+progress,meter {
+    width:100%;
+    height:7px;
+    border:0;
+    border-radius:3px;
+    background:var(--line);
+    accent-color:var(--cyan);
+}
+
+progress::-webkit-progress-bar {
+    background:var(--line);
+    border-radius:3px;
+}
+
+progress::-webkit-progress-value {
+    background:var(--cyan);
+    border-radius:3px;
+}
+
+progress::-moz-progress-bar {
+    background:var(--cyan);
+}
+
+meter::-webkit-meter-bar {
+    background:var(--line);
+    border:0;
+}
+
+meter::-webkit-meter-optimum-value {
+    background:var(--cyan);
+}
+
+.skip-link {
+    position:fixed;
+    left:1rem;
+    top:-80px;
+    background:var(--surface);
+    padding:1rem;
+    z-index:20;
+}
+
+.skip-link:focus {
+    top:1rem;
+}
+
+@media(prefers-reduced-motion:reduce) {
+    *,*::before,*::after {
+        animation:none!important;
+        transition:none!important;
+        scroll-behavior:auto!important;
+    }
 }

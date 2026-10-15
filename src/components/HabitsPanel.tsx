@@ -29,21 +29,22 @@ export default function HabitsPanel() {
 
     return (
         <section className="panel">
-            <h2 className="panel-title">✅ Daily Habits</h2>
+            <h2 className="panel-title">Daily habits</h2>
             <div className="habits-list">
                 {state.habits.map(habit => (
                     <div
                         key={habit.id}
-                        className={`habit-item ${habit.completedToday ? 'done' : ''} ${habit.completedToday ? 'celebrate' : ''}`}
-                        onClick={() => toggleHabit(habit.id)}
+                        className={`habit-item ${habit.completedToday ? 'done' : ''}`}
                     >
-                        <div className="habit-check">{habit.completedToday ? '✓' : ''}</div>
-                        <span className="habit-name">{habit.icon} {habit.name}</span>
-                        <span className="habit-xp">+5 XP</span>
+                        <button className="habit-toggle" onClick={() => toggleHabit(habit.id)} aria-pressed={habit.completedToday}>
+                            <span className="habit-check" aria-hidden="true">{habit.completedToday ? '✓' : ''}</span>
+                            <span className="habit-name">{habit.icon} {habit.name}</span>
+                            <span className="habit-xp">+5 XP</span>
+                        </button>
                         <button
                             className="habit-delete"
                             onClick={(e) => { e.stopPropagation(); deleteHabit(habit.id); }}
-                            title="Delete habit"
+                            aria-label={`Delete ${habit.name}`}
                         >×</button>
                     </div>
                 ))}
@@ -55,7 +56,8 @@ export default function HabitsPanel() {
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addHabit()}
-                    placeholder="New habit name..."
+                    aria-label="New habit name"
+                    placeholder="Add a habit to your day"
                     maxLength={40}
                 />
                 <button className="btn btn-secondary" onClick={addHabit}>Add</button>

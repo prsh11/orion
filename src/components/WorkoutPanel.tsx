@@ -22,10 +22,13 @@ export default function WorkoutPanel({ showToast }: { showToast: (message: strin
 
     return (
         <section className="panel">
-            <h2 className="panel-title">🏋️ Log Workout</h2>
-            <div className="form-row">
+            <h2 className="panel-title">Log a workout</h2>
+            <p className="panel-intro">Make today’s effort part of your story.</p>
+            <label className="field">
+                Workout type
                 <select
                     className="input"
+                    id="workout-type"
                     value={type}
                     onChange={(e) => { const selected = WORKOUT_TYPES.find(workout => workout.value === e.target.value);
                         if (selected) setType(selected.value); AudioFX.click(); }}
@@ -34,8 +37,9 @@ export default function WorkoutPanel({ showToast }: { showToast: (message: strin
                         <option key={w.value} value={w.value}>{w.icon} {w.label}</option>
                     ))}
                 </select>
-            </div>
-            <div className="form-row">
+            </label>
+            <label className="field">
+                Duration in minutes
                 <input
                     className="input"
                     type="number"
@@ -45,8 +49,9 @@ export default function WorkoutPanel({ showToast }: { showToast: (message: strin
                     onChange={(e) => setDuration(Number(e.target.value))}
                     placeholder="Duration (min)"
                 />
-            </div>
-            <div className="form-row">
+            </label>
+            <label className="field">
+                Notes (optional)
                 <input
                     className="input"
                     type="text"
@@ -55,9 +60,9 @@ export default function WorkoutPanel({ showToast }: { showToast: (message: strin
                     placeholder="Notes (e.g. leg day, 5k run)"
                     maxLength={60}
                 />
-            </div>
-            <button className="btn btn-primary" onClick={handleLog}>
-                Log Workout <span className="btn-xp">+{xpPreview} XP</span>
+            </label>
+            <button className="btn btn-primary" onClick={handleLog} disabled={!Number.isFinite(duration) || duration < 1 || duration > 300}>
+                Log workout <span className="btn-xp">+{xpPreview} XP</span>
             </button>
         </section>
     );

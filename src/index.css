@@ -1,58 +1,85 @@
-/* ===== FitQuest — Global Reset & Base ===== */
 :root {
-    --bg: #0d1117;
-    --bg-panel: #161b22;
-    --bg-card: #1c2330;
-    --border: #2d333b;
-    --text: #e6edf3;
-    --text-dim: #8b949e;
-    --accent: #58a6ff;
-    --accent-glow: rgba(88, 166, 255, 0.4);
-    --success: #3fb950;
-    --success-glow: rgba(63, 185, 80, 0.4);
-    --xp: #a371f7;
-    --xp-glow: rgba(163, 113, 247, 0.4);
-    --danger: #f85149;
-    --warning: #d29922;
-    --gold: #e3b341;
-    --radius: 12px;
-    --radius-sm: 8px;
-}
-
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-html {
-    font-size: 16px;
-}
-
-body {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background: var(--bg);
+    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
     color: var(--text);
-    min-height: 100vh;
-    background-image:
-        radial-gradient(ellipse at 20% 50%, rgba(88, 166, 255, 0.04) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 20%, rgba(163, 113, 247, 0.04) 0%, transparent 50%);
-    line-height: 1.5;
+    background: var(--bg);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    --bg: #edf2f7;
+    --bg-panel: #ffffff;
+    --bg-card: #f4f7fa;
+    --border: #d4dee8;
+    --text: #193047;
+    --text-dim: #52667a;
+    --accent: #244bd7;
+    --success: #23766a;
+    --xp: #244bd7;
+    --danger: #b82f44;
+    --gold: #926014;
+    color-scheme: light;
+    --brand: #244bd7;
+    --border-soft: #e0e6ef;
+    --line: #e8edf3;
+    --accent-soft: #dce5ff;
+    --track-muted: #d5dfec;
+    --chart: #bdccf4;
+    --placeholder: #607287;
+    --secondary: #e9eef7;
+    --secondary-hover: #dce5f4;
+    --success-soft: #edf5f3;
+    --success-text: #345e57;
+    --success-border: #b7d3cb;
+    --success-hover: #e1efeb;
+    --check-border: #a7b8c9;
+    --danger-soft: #fff0f1;
+    --gold-soft: #fff8e9;
+    --gold-border: #d8b57a;
+    --toast-bg: #193047;
+    --toast-text: #ffffff;
+    --display-font: 'Franklin Gothic Medium', 'Arial Narrow', 'Trebuchet MS', sans-serif;
 }
-
-#root {
-    min-height: 100vh;
+[data-theme='dark'] {
+    color-scheme: dark;
+    --bg: #101d2e;
+    --bg-panel: #192a3e;
+    --bg-card: #20344a;
+    --border: #405570;
+    --border-soft: #30465e;
+    --line: #30465e;
+    --text: #edf3fb;
+    --text-dim: #b4c3d5;
+    --accent: #a6bcff;
+    --accent-soft: #293f73;
+    --track-muted: #354b68;
+    --chart: #5674b4;
+    --placeholder: #acbdd0;
+    --secondary: #2b4059;
+    --secondary-hover: #354f70;
+    --success: #89d5bf;
+    --success-soft: #203e3b;
+    --success-text: #b7dfd4;
+    --success-border: #486e63;
+    --success-hover: #2b5148;
+    --check-border: #8198b3;
+    --danger: #ffabb8;
+    --danger-soft: #512b3a;
+    --gold: #edc77e;
+    --gold-soft: #3c3526;
+    --gold-border: #877045;
+    --toast-bg: #e1eaff;
+    --toast-text: #193047;
 }
-
-::-webkit-scrollbar {
-    width: 6px;
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; line-height: 1.5; }
+button, input, select { font: inherit; }
+button { cursor: pointer; touch-action: manipulation; }
+button, input, select { -webkit-tap-highlight-color: transparent; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 4px;
 }
-
-::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--border);
-    border-radius: 3px;
+h1, h2, h3, p { margin: 0; }
+::selection { background: #cbd8ff; color: #193047; }
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

@@ -1,58 +1,34 @@
-/* ===== FitQuest — Global Reset & Base ===== */
 :root {
-    --bg: #0d1117;
-    --bg-panel: #161b22;
-    --bg-card: #1c2330;
-    --border: #2d333b;
-    --text: #e6edf3;
-    --text-dim: #8b949e;
-    --accent: #58a6ff;
-    --accent-glow: rgba(88, 166, 255, 0.4);
-    --success: #3fb950;
-    --success-glow: rgba(63, 185, 80, 0.4);
-    --xp: #a371f7;
-    --xp-glow: rgba(163, 113, 247, 0.4);
-    --danger: #f85149;
-    --warning: #d29922;
-    --gold: #e3b341;
-    --radius: 12px;
-    --radius-sm: 8px;
+    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+    color: #193047;
+    background: #edf2f7;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    --bg: #edf2f7;
+    --bg-panel: #ffffff;
+    --bg-card: #f4f7fa;
+    --border: #d4dee8;
+    --text: #193047;
+    --text-dim: #52667a;
+    --accent: #244bd7;
+    --success: #23766a;
+    --xp: #244bd7;
+    --danger: #b82f44;
+    --gold: #926014;
+    --display-font: 'Franklin Gothic Medium', 'Arial Narrow', 'Trebuchet MS', sans-serif;
 }
-
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; line-height: 1.5; }
+button, input, select { font: inherit; }
+button { cursor: pointer; touch-action: manipulation; }
+button, input, select { -webkit-tap-highlight-color: transparent; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 4px;
 }
-
-html {
-    font-size: 16px;
-}
-
-body {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    background-image:
-        radial-gradient(ellipse at 20% 50%, rgba(88, 166, 255, 0.04) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 20%, rgba(163, 113, 247, 0.04) 0%, transparent 50%);
-    line-height: 1.5;
-}
-
-#root {
-    min-height: 100vh;
-}
-
-::-webkit-scrollbar {
-    width: 6px;
-}
-
-::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--border);
-    border-radius: 3px;
+h1, h2, h3, p { margin: 0; }
+::selection { background: #cbd8ff; color: #193047; }
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

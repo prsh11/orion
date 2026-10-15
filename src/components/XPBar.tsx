@@ -11,11 +11,11 @@ export default function XPBar() {
 
     return (
         <div className="xp-bar-wrap">
-            <div className="xp-bar">
+            <div className="xp-bar" role="progressbar" aria-label="Progress to next level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
                 <div className="xp-fill" style={{ width: `${pct}%` }} />
             </div>
             <span className="xp-text">
-                {next ? `${xpInRange} / ${rangeSize} XP` : `${state.player.xp} XP (MAX)`}
+                {next ? `${xpInRange} / ${rangeSize} XP to level ${next.level}` : `${state.player.xp} XP (MAX)`}
             </span>
         </div>
     );

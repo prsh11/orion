@@ -1,31 +1,21 @@
 import { useGame } from '../gameContext';
 import { getLevelInfo } from '../gameData';
-import AudioFX from '../audio';
 
 export default function TopBar() {
     const { state } = useGame();
     const { current } = getLevelInfo(state.player.xp);
-
     return (
         <header className="topbar">
             <div className="brand">
-                <span className="brand-icon" onClick={() => AudioFX.click()}>💪</span>
-                <span className="brand-name">FitQuest</span>
+                <svg className="brand-icon" viewBox="0 0 40 40" aria-hidden="true">
+                    <path d="M8 29V18a11 11 0 0 1 22 0v11M14 29V18a5 5 0 0 1 10 0v11M8 23h22" />
+                </svg>
+                <div><span className="brand-name">FitQuest</span><span className="brand-caption">Your everyday training journal</span></div>
             </div>
             <div className="player-stats">
-                <div className="stat-chip level-chip" title={`Level ${current.level} — ${current.title}`}>
-                    <span className="chip-label">LVL</span>
-                    <span className="chip-value">{current.level}</span>
-                    <span className="chip-title">{current.title}</span>
-                </div>
-                <div className="stat-chip" title="Streak">
-                    <span className="chip-label">🔥</span>
-                    <span className="chip-value">{state.player.streak}</span>
-                </div>
-                <div className="stat-chip" title="Achievements">
-                    <span className="chip-label">🏆</span>
-                    <span className="chip-value">{state.achievements.length}</span>
-                </div>
+                <div className="stat-chip level-chip"><span className="level-number">{current.level}</span><span>Level {current.level}<strong>{current.title}</strong></span></div>
+                <div className="stat-chip"><strong>{state.player.streak}</strong><span>day streak</span></div>
+                <div className="stat-chip"><strong>{state.achievements.length}</strong><span>badges earned</span></div>
             </div>
         </header>
     );

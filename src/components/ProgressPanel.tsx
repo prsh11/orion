@@ -24,7 +24,7 @@ export default function ProgressPanel() {
 
     return (
         <section className="panel">
-            <h2 className="panel-title">📊 Progress</h2>
+            <h2 className="panel-title">Your momentum</h2>
             <div className="progress-stats">
                 <div className="pstat">
                     <span className="pstat-val">{state.totalWorkouts}</span>
@@ -39,7 +39,7 @@ export default function ProgressPanel() {
                     <span className="pstat-label">Minutes</span>
                 </div>
             </div>
-            <h3 className="sub-title">This Week</h3>
+            <h3 className="sub-title">Training this week</h3>
             <div className="weekly-chart">
                 {days.map((d, i) => (
                     <div
@@ -51,10 +51,10 @@ export default function ProgressPanel() {
                     />
                 ))}
             </div>
-            <h3 className="sub-title">Recent Activity</h3>
+            <h3 className="sub-title">Recent activity</h3>
             <ul className="activity-feed">
                 {state.activityFeed.length === 0 && (
-                    <li className="activity-empty">No activity yet — log a workout!</li>
+                    <li className="activity-empty">Your journal starts here. Log a workout or complete a habit to see your activity.</li>
                 )}
                 {state.activityFeed.slice(0, 8).map(item => (
                     <li key={item.id} className="activity-item">

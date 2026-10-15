@@ -42,10 +42,16 @@ export function DailyCare() {
     if (!data) return null;
     const today = dayKey(data.server_time, data.profile.timezone);
     const done = (key: string) => data.activities.some(a => a.daily_key === key + ':' + today);
-    return <section className="panel"><h2>Daily rhythm</h2><p className="muted">Habits: +5 XP / +1 Discipline. Recovery: +10 XP / +1 Vitality per target. Awarded once a day.</p>
-        <h3>Your habits</h3>{!data.habits.some(h => !h.archived) && <p className="muted">Add one small action you want to repeat.</p>}
-        {data.habits.filter(h => !h.archived).map(h => <div className="daily-row" key={h.id}><button disabled={busy || done('habit:' + h.id)} onClick={() => { void command('complete_habit', { id: h.id }); }}>{done('habit:' + h.id) ? '✓' : '+'} {h.name}</button><button className="text-button" onClick={() => { void command('archive_habit', { id: h.id }); }} disabled={busy} aria-label={`Archive ${h.name}`}>Archive</button></div>)}
-        <form className="button-row" onSubmit={e => { e.preventDefault(); const form = e.currentTarget; const f = new FormData(form); void command('habit', { name: f.get('name') }).then(ok => { if (ok) form.reset(); }); }}><label className="grow">New habit<input name="name" required maxLength={100} placeholder="Read before bed" /></label><button disabled={busy}>Add habit</button></form>
-        <h3>Recovery targets</h3><div className="recovery-grid">{['Water: 2 litres', 'Sleep: 8 hours', 'Mindfulness: 10 minutes', 'Balanced meals: 3'].map(target => <button key={target} disabled={busy || done('recovery:' + target)} onClick={() => { void command('recovery', { target }); }}>{done('recovery:' + target) ? '✓ ' : '+ '}{target}</button>)}</div>
+    const completed = data.habits.filter(h => !h.archived && done('habit:' + h.id)).length;
+    return <section className="panel daily-care">
+        <div className="section-heading"><div><h2>Daily rhythm</h2><p className="muted">Small rituals. A stronger foundation.</p></div><span className="daily-summary">{completed} habits completed today</span></div>
+        <div className="care-columns">
+            <div className="habit-section"><div className="subsection-heading"><h3>Your habits</h3><span>+5 XP / +1 Discipline</span></div>
+                {!data.habits.some(h => !h.archived) && <p className="muted">Add one small action you want to repeat.</p>}
+                {data.habits.filter(h => !h.archived).map(h => <div className={`daily-row ${done('habit:' + h.id) ? 'is-complete' : ''}`} key={h.id}><button className="habit-complete" disabled={busy || done('habit:' + h.id)} onClick={() => { void command('complete_habit', { id: h.id }); }}><span className="completion-check" aria-hidden="true">{done('habit:' + h.id) ? '✓' : '+'}</span>{h.name}</button><button className="text-button" onClick={() => { void command('archive_habit', { id: h.id }); }} disabled={busy} aria-label={`Archive ${h.name}`}>Archive</button></div>)}
+                <form className="button-row habit-form" onSubmit={e => { e.preventDefault(); const form = e.currentTarget; const f = new FormData(form); void command('habit', { name: f.get('name') }).then(ok => { if (ok) form.reset(); }); }}><label className="grow">New habit<input name="name" required maxLength={100} placeholder="Read before bed" /></label><button disabled={busy}>Add habit</button></form>
+            </div>
+            <div className="recovery-section"><div className="subsection-heading"><h3>Recovery targets</h3><span>+10 XP / +1 Vitality</span></div><div className="recovery-grid">{['Water: 2 litres', 'Sleep: 8 hours', 'Mindfulness: 10 minutes', 'Balanced meals: 3'].map((target, i) => <button className={done('recovery:' + target) ? 'is-complete' : ''} key={target} disabled={busy || done('recovery:' + target)} onClick={() => { void command('recovery', { target }); }}><span className="recovery-symbol" aria-hidden="true">{['◒', '☾', '✧', '♧'][i]}</span><span>{target}</span><span className="recovery-check" aria-hidden="true">{done('recovery:' + target) ? '✓' : '+'}</span></button>)}</div><p className="muted small">Each target rewards you once per day. Make room for yourself.</p></div>
+        </div>
     </section>;
 }

@@ -8,6 +8,8 @@ import { ActivityHistory, DailyCare, ExerciseLibrary } from './orion/Tracking';
 import Quests, { QuestCard } from './orion/Quests';
 import ProfileForm from './orion/ProfileForm';
 import { Analytics, Settings } from './orion/Settings';
+import CharacterConstellation from './orion/CharacterConstellation';
+import NavIcon from './orion/NavIcon';
 import './App.css';
 
 const tabs = ['Dashboard', 'Quests', 'Training', 'Journal', 'Character', 'Settings'] as const;
@@ -23,17 +25,17 @@ function Dashboard({ navigate }: { navigate: (tab: Tab) => void }) {
     if (!data) return null;
     const next = data.quests.find(q => !q.completed_at && q.ends_at > data.server_time);
     const boss = data.bosses.find(b => b.status === 'active');
-    return <><section className="dashboard-intro"><div><p className="system-status"><span /> System connected</p><h1>A little stronger.<br />A little more you.</h1><p>Your next level lives in the things you do today.</p><div className="button-row"><button className="primary" onClick={() => navigate('Training')}>Log training</button><button onClick={() => navigate('Journal')}>Write an entry</button></div></div><div className="orbit-art" aria-hidden="true"><OrionMark /></div></section>
-        <div className="dashboard-grid"><Character /><div className="next-quest panel"><div className="section-heading"><h2>Your next quest</h2><button className="text-button" onClick={() => navigate('Quests')}>Quest log</button></div>{next ? <QuestCard quest={next} /> : <div className="empty"><h3>Choose your direction</h3><p>Start with one repeatable action. Daily, weekly, or monthly: you set the pace.</p><button onClick={() => navigate('Quests')}>Find a quest</button></div>}{boss && <div className="boss-alert"><h3>{boss.title}</h3><p>Deadline {new Date(boss.deadline).toLocaleString(undefined, { timeZone: data.profile.timezone })}</p><button onClick={() => navigate('Quests')}>View active mission</button></div>}</div></div><DailyCare /><Analytics compact />
-    </>;
+    return <div className="dashboard"><section className="dashboard-intro"><div className="hero-copy"><p className="system-status"><span /> {new Date(data.server_time).toLocaleDateString(undefined, { timeZone: data.profile.timezone, weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>A little stronger.<br />A little more you.</h1><p>Your next level lives in the things you do today.</p><div className="button-row"><button className="primary" onClick={() => navigate('Training')}>Log training</button><button onClick={() => navigate('Journal')}>Write an entry</button></div></div><CharacterConstellation /></section>
+        <div className="dashboard-grid"><div className="next-quest panel"><div className="section-heading"><h2>Your next quest</h2><button className="text-button" onClick={() => navigate('Quests')}>Quest log</button></div>{next ? <QuestCard quest={next} /> : <div className="empty"><h3>Choose your direction</h3><p>Start with one repeatable action. Daily, weekly, or monthly: you set the pace.</p><button onClick={() => navigate('Quests')}>Find a quest</button></div>}{boss && <div className="boss-alert"><h3>{boss.title}</h3><p>Deadline {new Date(boss.deadline).toLocaleString(undefined, { timeZone: data.profile.timezone })}</p><button onClick={() => navigate('Quests')}>View active mission</button></div>}</div><Analytics compact /></div><DailyCare />
+    </div>;
 }
 function System() {
     const { data, busy, error, pending, retry, refresh, notices, dismiss } = useOrion();
     const [tab, setTab] = useState<Tab>('Dashboard');
     const navigate = (next: Tab) => { setTab(next); void refresh(); };
     const level = levelFor(data?.profile.xp ?? 0);
-    return <div className="app"><a className="skip-link" href="#main-content">Skip to content</a>
-        <aside className="sidebar"><a className="wordmark" href="/" aria-label="Orion home"><OrionMark />orion</a><p className="sidebar-caption">Your everyday RPG</p><nav aria-label="Main navigation">{tabs.map((t, i) => <button key={t} aria-current={tab === t ? 'page' : undefined} onClick={() => navigate(t)}><span aria-hidden="true">{['⌂', '◇', '↗', '▤', '◈', '⚙'][i]}</span>{t}</button>)}</nav><div className="sidebar-bottom"><span className="status-dot" />Private player account<p>Every action adds up.</p></div></aside>
+    return <div className={`app view-${tab.toLowerCase()}`}><a className="skip-link" href="#main-content">Skip to content</a>
+        <aside className="sidebar"><a className="wordmark" href="/" aria-label="Orion home"><OrionMark />orion</a><p className="sidebar-caption">Your everyday RPG</p><nav aria-label="Main navigation">{tabs.map((t, i) => <button key={t} aria-current={tab === t ? 'page' : undefined} onClick={() => navigate(t)}><NavIcon index={i} />{t}</button>)}</nav><div className="sidebar-bottom"><span className="status-dot" />Private player account<p>Every action adds up.</p></div></aside>
         <div className="workspace"><header className="topbar"><span>{tab}</span><div className="player-summary"><span className="sync-status" role="status">{busy ? 'Syncing…' : error ? 'Connection needs attention' : 'Saved to your account'}</span><span className="player-avatar">{data?.profile.display_name.slice(0, 1) ?? 'O'}</span><span>{data?.profile.display_name ?? 'Player'}<small>Level {level} · Rank {rankFor(level)}</small></span></div></header>
             {data && <div className="xp-strip"><span>Level {level}</span><progress max={threshold(level + 1) - threshold(level)} value={data.profile.xp - threshold(level)} aria-label={`${data.profile.xp - threshold(level)} of ${threshold(level + 1) - threshold(level)} XP toward level ${level + 1}`} /><span>{data.profile.xp} / {threshold(level + 1)} XP</span></div>}
             <main id="main-content" tabIndex={-1} aria-busy={busy}>

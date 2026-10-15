@@ -1,0 +1,30 @@
+export const ATTRIBUTES = ['Strength', 'Endurance', 'Vitality', 'Intellect', 'Discipline', 'Connection'] as const;
+export type Attribute = typeof ATTRIBUTES[number];
+export type Kind = 'gym' | 'running' | 'cardio' | 'other' | 'reading' | 'study' | 'focus' | 'social' | 'habit' | 'recovery';
+export type Period = 'daily' | 'weekly' | 'monthly';
+export type Metric = 'minutes' | 'workouts' | 'metres' | 'habits' | 'recovery' | 'manual';
+export interface Profile {
+    id: string; display_name: string; timezone: string; units: 'metric' | 'imperial';
+    domains: string[]; onboarded: boolean; xp: number; attributes: Record<Attribute, number>; imported: boolean;
+}
+export interface Activity {
+    id: string; kind: Kind; title: string; attribute: Attribute; minutes: number; metres: number;
+    notes: string; occurred_at: string; recorded_at: string; daily_key: string | null; base_xp: number; base_points: number;
+}
+export interface Exercise { id: string; name: string; bodyweight: boolean; dumbbell: boolean }
+export interface WorkoutSet { id: string; activity_id: string; exercise_id: string; reps: number; kg: number; ordinal: number }
+export interface Habit { id: string; name: string; archived: boolean }
+export interface QuestDefinition { id: string; title: string; period: Period; metric: Metric; target: number; attribute: Attribute; archived: boolean }
+export interface Quest extends QuestDefinition { definition_id: string; starts_at: string; ends_at: string; progress: number; completed_at: string | null }
+export interface Objective { metric: Exclude<Metric, 'manual'>; target: number }
+export interface BossTemplate { id: string; title: string; hours: number; attributes: Attribute[]; objectives: Objective[] }
+export interface Boss extends BossTemplate {
+    template_id: string; accepted_at: string; deadline: string; status: 'active' | 'victory' | 'failure'; resolved_at: string | null;
+}
+export interface ProgressEvent { id: string; source: string; xp: number; attributes: Partial<Record<Attribute, number>>; created_at: string }
+export interface Snapshot {
+    profile: Profile; activities: Activity[]; sets: WorkoutSet[]; exercises: Exercise[]; habits: Habit[];
+    quests: Quest[]; definitions: QuestDefinition[]; bosses: Boss[]; templates: BossTemplate[]; events: ProgressEvent[]; server_time: string; legacy_achievements?: string[];
+}
+export interface Command { id: string; action: string; payload: Record<string, unknown> }
+export interface CommandResult { saved?: boolean; personal_record?: boolean; deleted?: boolean }

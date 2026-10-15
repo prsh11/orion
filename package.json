@@ -1,5 +1,5 @@
 {
-  "name": "fitnessapp",
+  "name": "orion",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,19 +8,28 @@
     "build": "tsc --noEmit && vite build",
     "lint": "tsc --noEmit && oxlint --deny-warnings",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:db": "tsx --test tests/database.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.9",
+    "@playwright/test": "^1.64.1",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "oxlint": "^1.81.0",
-    "vite": "^8.3.0",
-    "typescript": "~5.9.3"
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.0"
   },
   "packageManager": "pnpm@11.28.5"
 }

@@ -35,7 +35,8 @@ function isString(value: unknown): value is string {
 
 // JSON drops quest check functions. Reattach the current templates when loading saves.
 export function parseSave(raw: string): GameState | null {
-    const saved: unknown = JSON.parse(raw);
+    let saved: unknown;
+    try { saved = JSON.parse(raw); } catch { return null; }
     if (!isRecord(saved) || !isRecord(saved.player)) return null;
     const player = saved.player;
     if (!isNumber(player.xp) || !isNumber(player.streak)

@@ -33,4 +33,6 @@ dist-ssr
 
 # Generated reports and TypeScript caches
 coverage/
+test-results/
+playwright-report/
 *.tsbuildinfo

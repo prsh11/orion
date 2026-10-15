@@ -1,12 +1,13 @@
 {
   "name": "orion",
+  "description": "Orion: a private life-tracking RPG",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "lint": "tsc --noEmit && oxlint --deny-warnings",
+    "lint": "tsc --noEmit && tsc --project tsconfig.tests.json && oxlint --deny-warnings",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.9",
     "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",

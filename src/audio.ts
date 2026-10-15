@@ -1,4 +1,4 @@
-/* ===== FitQuest Audio Engine ===== */
+/* Orion audio engine. Sounds play only after explicit opt-in. */
 /* All sounds synthesized via Web Audio API — no external files needed */
 
 const AudioFX = (() => {

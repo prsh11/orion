@@ -2,7 +2,10 @@
 
 ## Project
 
-Gamified gym & life tracker. Single-page React app — no backend, no API. All state persists to `localStorage`.
+Orion is a private, account-based life-tracking RPG. React + TypeScript + Vite,
+plain CSS, Supabase Auth, and PostgreSQL. The server owns tracking records,
+progression, quest rewards, and boss settlement. Browser storage holds sessions,
+appearance preferences, unfinished drafts, and idempotent pending requests only.
 
 ## Commands
 
@@ -18,7 +21,10 @@ pnpm lint        # typecheck + oxlint, zero warnings (not eslint)
 pnpm preview     # preview production build
 ```
 
-No test runner is configured.
+`pnpm test` runs Node tests through tsx, including the production migration on
+PGlite. `pnpm test:e2e` runs Playwright with mocked Supabase HTTP responses.
+Set `ORION_TEST_DATABASE_URL` to an isolated migrated PostgreSQL database to run
+the multi-connection concurrency test. Never point tests at production.
 
 ## Git workflow
 
@@ -35,12 +41,14 @@ No test runner is configured.
 
 ## Architecture
 
-- **State**: Single `useReducer` + React Context in `src/store.tsx`. All game logic (XP, levels, streaks, achievements, quests) lives in the reducer. Components dispatch actions only.
-- **Context**: `src/gameContext.ts` owns the typed context and `useGame` hook.
-- **Persistence**: `src/save.ts` validates saved data and restores quest functions.
-- **Game data**: `src/gameData.ts` — level thresholds, achievement definitions, quest templates, workout types. Pure data + check functions.
+- **State**: `src/orion/store.tsx` owns the rendering reducer: confirmed snapshots, loading, errors, pending commands, and notification queue. Components call authenticated commands and never award XP locally.
+- **Context**: `src/orion/context.ts` owns the typed context and `useOrion` hook.
+- **Backend**: `supabase/migrations/` owns schema, RLS, transactional commands, reward events, recurring quest instances, and cron settlement. Internal helpers live in the unexposed `private` schema. Always set a safe search path on database functions.
+- **Client**: `src/orion/client.ts` uses the official Supabase client for authenticated RPCs. Never put service-role credentials in the browser.
+- **Calculations**: `src/orion/logic.ts` contains display arithmetic, units, pace, and analytics. PostgreSQL decides actual awards and outcomes.
+- **Legacy compatibility**: `src/save.ts`, `src/gameData.ts`, and `src/types.ts` validate old browser saves and restore their template functions for import only. Preserve the `fitquest-save-v1` key until and after import; never replay historical rewards.
 - **Audio**: `src/audio.ts` — Web Audio API synthesized SFX (no audio files). All sounds are oscillator/noise-based. Respects browser autoplay policy (fails silently until user interaction).
-- **Components**: `src/components/` — one file per panel. Functional components with hooks only.
+- **Components**: `src/orion/` — account, tracking, quests, character, and settings screens. Functional components with hooks only.
 - **Styling**: Plain CSS with CSS custom properties in `src/index.css` (theme variables) and `src/App.css` (component styles). No CSS framework, no CSS modules, no Tailwind.
 
 ## Conventions
@@ -48,7 +56,10 @@ No test runner is configured.
 - TypeScript only: `.tsx` for React components, `.ts` for logic and config.
 - Keep strict TypeScript checks passing; type reducer actions, context values, component props, and game data. Do not use `any` or TypeScript suppression comments.
 - Validate persisted JSON as `unknown` in `src/save.ts`; restore quest check functions from templates when loading.
-- All game state flows through the reducer — do not add `useState` for game data in components.
-- Achievement/quest check functions receive the full state object and return boolean.
-- Daily reset happens automatically on load when `lifeStatsDate` doesn't match today.
-- Streak increments when `lastActiveDate` is yesterday; resets to 1 otherwise.
+- Confirmed game state flows through the rendering reducer. Component `useState` is for drafts and UI controls only.
+- Every mutation uses a unique command ID. Persist and retry uncertain outcomes with that ID. PostgreSQL rejects reuse with a different payload; deterministic rejections roll back and unlock editing.
+- Serialize every player mutation and settlement on the profile row. Reward-source keys are unique. Keep clients read-only under RLS; grant execution only on authenticated entry points.
+- Store canonical kg/metres and UTC timestamps. Calendar day/week/month boundaries follow the profile timezone; weeks start Monday. Existing quest instances keep their UTC boundaries.
+- Boss deadlines are exclusive. Both occurrence and recording must be inside the accepted interval. Settlement runs before reads/writes and every minute through cron. Ordinary quests never penalize players.
+- Keep local drafts separate per account and unit preference. No unconfirmed rewards, offline mutation queue, public leaderboard, or fabricated historical workout sets.
+- Run `pnpm lint`, `pnpm build`, `pnpm test`, and relevant browser tests before requesting review. See README.md for deployment and live-account verification.

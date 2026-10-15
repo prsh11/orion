@@ -174,14 +174,12 @@ redirect URLs to the production origin, configure email delivery, apply both
 migrations, and verify cron before public signup. No secret key is needed in the
 frontend deployment. The app uses one document and has no route rewrite needs.
 
-The implementation uses five stacked feature branches: `feature/orion-foundation`,
-`feature/orion-tracking`, `feature/orion-quests`, `feature/orion-bosses`, and
-`feature/orion-interface`. Review them in that order; each branch builds on the
-previous one. The foundation contains the complete transactional database contract
-and regression tests so later screens can share one server implementation. The
-last branch wires the screen modules into the new interface and removes the old
-browser-authoritative app. Do not merge or deploy without review. Production
-credentials, hosting, and live-account verification are deployment responsibilities.
+The complete implementation is consolidated on `feature/orion-final` in one pull
+request against `master`. Review and merge that PR; the earlier stacked PRs are
+superseded. It includes the transactional database contract, tracking, quests,
+bosses, interface, analytics, and completion sound effects. Do not deploy without
+review. Production credentials, hosting, and live-account verification are
+deployment responsibilities.
 
 GPS, wearables, multiplayer, inventory, public leaderboards, and offline
 synchronization are outside this release. See [CONTRIBUTING.md](CONTRIBUTING.md)

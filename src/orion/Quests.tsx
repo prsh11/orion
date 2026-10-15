@@ -3,6 +3,7 @@ import { useOrion } from './context';
 import { ATTRIBUTES } from './types';
 import type { Period, Quest, QuestDefinition } from './types';
 import { metricLabel, questReward } from './logic';
+import Bosses from './Bosses';
 
 export function QuestCard({ quest: q }: { quest: Quest }) {
     const { command, busy, data } = useOrion();
@@ -28,6 +29,7 @@ export default function Quests() {
         ].map(t => <article key={t.title}><h3>{t.title}</h3><p>{t.target} {metricLabel[t.metric as keyof typeof metricLabel]} / {t.period}</p><p className="reward-preview">+{questReward(t.period as Period).xp} XP / +{questReward(t.period as Period).points} {t.attribute}</p><button disabled={busy || data.definitions.some(d => !d.archived && d.title === t.title)} onClick={() => { void command('quest', t); }}>Activate quest</button></article>)}</div></section>
         <section className="panel"><h2>Create a recurring quest</h2><form onSubmit={e => { e.preventDefault(); const form = e.currentTarget; const f = new FormData(form); void command('quest', { title: f.get('title'), period, target: Number(f.get('target')), metric: f.get('metric'), attribute: f.get('attribute') }).then(ok => { if (ok) form.reset(); }); }}><label>Title<input name="title" maxLength={120} required /></label><div className="form-grid"><label>Period<select value={period} onChange={e => setPeriod(e.target.value as Period)}><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label><label>Progress from<select name="metric">{Object.entries(metricLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label><label>Target<input name="target" type="number" min="1" max="10000000" required defaultValue="30" /></label><label>Attribute<select name="attribute">{ATTRIBUTES.map(a => <option key={a}>{a}</option>)}</select></label></div><p className="muted">Automatic progress counts activities in the selected attribute. Running distance targets are in metres.</p><p className="reward-preview">Reward: {reward.xp} XP + {reward.points} points in the chosen attribute</p><button className="primary" disabled={busy}>Activate quest</button></form>
         <details><summary>Manage recurring quests</summary><p className="muted">Changes apply to future periods. Archiving stops future instances. Existing history and settled rewards remain.</p>{data.definitions.filter(d => !d.archived).map(d => <QuestEditor definition={d} key={d.id} />)}</details></section>
+        <Bosses />
     </>;
 }
 function QuestEditor({ definition: d }: { definition: QuestDefinition }) {

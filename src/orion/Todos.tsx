@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useOrion } from './context';
 import { dayKey, deadlineInput, questReward, todoOrder } from './logic';
+import GameIcon from './GameIcon';
+import AudioFX from '../audio';
 import { ATTRIBUTES } from './types';
 import type { Attribute, Difficulty, Quest } from './types';
 
@@ -35,7 +37,7 @@ function TodoForm({ todo, onDone }: { todo?: Quest; onDone?: () => void }) {
         });
     }}>
         <div className="todo-add"><label className="grow">{todo ? 'Todo title' : 'New todo'}<input name="title" placeholder="Get groceries" defaultValue={todo?.title ?? ''} maxLength={120} required /></label><button className="primary" disabled={busy}>{todo ? 'Save todo' : 'Add todo'}</button></div>
-        {frozen ? <p className="muted small">Only title corrections are available after the deadline or completion.</p> : todo ? fields : <details><summary>Options · {reward.xp} XP{attribute ? ` / ${attribute}` : ''}</summary>{fields}</details>}
+        {frozen ? <p className="muted small">Only title corrections are available after the deadline or completion.</p> : todo ? fields : <details onToggle={e => { if (e.currentTarget.open) AudioFX.click(); }}><summary>Options · {reward.xp} XP{attribute ? ` / ${attribute}` : ''}</summary>{fields}</details>}
     </form>;
 }
 function TodoRow({ todo: q }: { todo: Quest }) {
@@ -62,7 +64,7 @@ export default function Todos({ compact = false }: { compact?: boolean }) {
     const todos = data.quests.filter(q => q.kind === 'todo');
     const forToday = (q: Quest) => !q.archived && (!q.completed_at ? (q.planned_on ?? today) <= today || Boolean(q.due_at && dayKey(q.due_at, data.profile.timezone) <= today) : dayKey(q.completed_at, data.profile.timezone) === today);
     const rows = todos.filter(q => view === 'history' ? q.archived || q.completion_history.length > 0 : view === 'upcoming' ? !q.archived && !q.completed_at && !forToday(q) : forToday(q)).sort(todoOrder);
-    return <section className="panel todo-panel" aria-label="Daily todos"><div className="section-heading"><div><h2>Today</h2><p className="muted small">Small things, off your mind.</p></div><span className="daily-summary">{todos.filter(q => q.completed_at && dayKey(q.completed_at, data.profile.timezone) === today).length} done today</span></div>
+    return <section className="panel todo-panel" aria-label="Daily todos"><div className="section-heading"><div><h2><GameIcon name="todo" />Today</h2><p className="muted small">Small things, off your mind.</p></div><span className="daily-summary">{todos.filter(q => q.completed_at && dayKey(q.completed_at, data.profile.timezone) === today).length} done today</span></div>
         {!compact && <TodoForm />}
         {!compact && <div className="button-row todo-tabs" aria-label="Todo views">{(['today', 'upcoming', 'history'] as const).map(tab => <button key={tab} aria-pressed={view === tab} onClick={() => setView(tab)}>{tab === 'today' ? 'Today' : tab === 'upcoming' ? 'Upcoming' : 'Todo history'}</button>)}</div>}
         <div className="todo-list">{rows.map(q => <TodoRow todo={q} key={q.id} />)}</div>

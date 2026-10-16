@@ -1,235 +1,116 @@
-/* Orion audio engine. Sounds play only after explicit opt-in. */
-/* All sounds synthesized via Web Audio API — no external files needed */
-
+/* Synthesized Orion SFX. A single master bus owns volume and cancellable voices. */
+export interface AudioSettings { enabled: boolean; volume: number }
+function readSettings(): AudioSettings {
+    if (typeof window === 'undefined') return { enabled: false, volume: .4 };
+    try {
+        const saved = localStorage.getItem('orion-volume');
+        const volume = saved === null ? .4 : Number(saved);
+        return { enabled: localStorage.getItem('orion-sound') === 'on', volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : .4 };
+    } catch { return { enabled: false, volume: .4 }; }
+}
 const AudioFX = (() => {
+    let settings = readSettings();
     let ctx: AudioContext | null = null;
+    let master: GainNode | null = null;
+    const voices = new Set<AudioScheduledSourceNode>();
+    const listeners = new Set<() => void>();
     const queue: { play: () => void; duration: number }[] = [];
-    let queueTimer: ReturnType<typeof setTimeout> | undefined;
-    let enabled = (() => {
-        if (typeof window === 'undefined') return false;
-        try { return localStorage.getItem('orion-sound') === 'on'; } catch { return false; }
-    })();
-
+    let timer: ReturnType<typeof setTimeout> | undefined;
     function getCtx() {
         if (!ctx) {
             const AudioContextClass = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-            if (!AudioContextClass) throw new Error('Web Audio is unavailable');
+            if (!AudioContextClass) throw new Error('Audio unavailable');
             ctx = new AudioContextClass();
+            master = ctx.createGain(); master.gain.value = settings.volume;
+            const limiter = ctx.createDynamicsCompressor(); limiter.threshold.value = -12; limiter.ratio.value = 8;
+            master.connect(limiter); limiter.connect(ctx.destination);
         }
-        if (ctx.state === 'suspended') {
-            void ctx.resume().catch(() => {});
-        }
+        if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
         return ctx;
     }
-
-    function play(fn: (context: AudioContext) => void) {
-        if (!enabled) return;
+    function stop() {
+        queue.length = 0; clearTimeout(timer); timer = undefined;
+        if (!ctx || !master) return;
+        const time = ctx.currentTime;
+        master.gain.cancelScheduledValues(time);
+        master.gain.setValueAtTime(master.gain.value, time);
+        master.gain.linearRampToValueAtTime(0, time + .025);
+        for (const voice of voices) { try { voice.stop(time + .03); } catch { /* Already ended. */ } }
+        voices.clear();
+    }
+    function update(next: AudioSettings) {
+        settings = next;
+        if (!settings.enabled || settings.volume === 0) stop();
+        else if (ctx && master) { master.gain.cancelScheduledValues(ctx.currentTime); master.gain.setTargetAtTime(settings.volume, ctx.currentTime, .015); }
+        try { localStorage.setItem('orion-sound', settings.enabled ? 'on' : 'off'); localStorage.setItem('orion-volume', String(settings.volume)); } catch { /* In-memory settings remain usable. */ }
+        listeners.forEach(listener => listener());
+    }
+    function connect(source: AudioScheduledSourceNode, duration: number, delay: number, volume: number, pan: number, filter?: BiquadFilterNode) {
+        const context = getCtx(); const time = context.currentTime + delay;
+        const envelope = context.createGain(); const position = context.createStereoPanner(); position.pan.value = pan;
+        envelope.gain.setValueAtTime(.0001, time);
+        envelope.gain.linearRampToValueAtTime(volume, time + .012);
+        envelope.gain.exponentialRampToValueAtTime(.0001, time + duration);
+        if (filter) { source.connect(filter); filter.connect(envelope); } else source.connect(envelope);
+        envelope.connect(position); position.connect(master!);
+        voices.add(source);
+        source.onended = () => { voices.delete(source); source.disconnect(); filter?.disconnect(); envelope.disconnect(); position.disconnect(); };
+        source.start(time); source.stop(time + duration + .01);
+    }
+    function note(frequency: number, delay: number, duration = .28, volume = .15, pan = 0, type: OscillatorType = 'sine') {
+        const source = getCtx().createOscillator(); source.type = type; source.frequency.value = frequency;
+        connect(source, duration, delay, volume, pan);
+    }
+    function shimmer(delay = 0, duration = .22) {
+        const context = getCtx(); const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * duration), context.sampleRate);
+        const samples = buffer.getChannelData(0); for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+        const source = context.createBufferSource(); source.buffer = buffer;
+        const filter = context.createBiquadFilter(); filter.type = 'bandpass'; filter.frequency.value = 3400; filter.Q.value = .7;
+        connect(source, duration, delay, .07, 0, filter);
+    }
+    function play(pattern: () => void) {
+        if (!settings.enabled || settings.volume === 0) return;
         try {
-            fn(getCtx());
-        } catch {
-            // Audio not ready yet (browser autoplay policy) — fail silently
-        }
+            const context = getCtx(); master!.gain.cancelScheduledValues(context.currentTime); master!.gain.setTargetAtTime(settings.volume, context.currentTime, .015);
+            pattern();
+        } catch { /* Audio is optional and autoplay restrictions never block a save. */ }
     }
-
-    function tone(freq: number, type: OscillatorType, duration: number, startTime = 0, volume = 0.3) {
-        return (ctx: AudioContext) => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = type;
-            osc.frequency.value = freq;
-            gain.gain.setValueAtTime(volume, ctx.currentTime + startTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + duration);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start(ctx.currentTime + startTime);
-            osc.stop(ctx.currentTime + startTime + duration);
-        };
+    function phrase(notes: number[], step = .09, sustain = .3, bass?: number) {
+        notes.forEach((frequency, i) => { note(frequency, i * step, sustain, .15, i % 2 ? .18 : -.18); note(frequency * 2, i * step + .025, sustain * .6, .035, i % 2 ? -.25 : .25); });
+        if (bass) note(bass, 0, .6, .18, 0, 'triangle');
     }
-
-    function noise(duration: number, startTime = 0, volume = 0.15, filterFreq = 2000) {
-        return (ctx: AudioContext) => {
-            const bufferSize = ctx.sampleRate * duration;
-            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) {
-                data[i] = Math.random() * 2 - 1;
-            }
-            const noise = ctx.createBufferSource();
-            noise.buffer = buffer;
-            const filter = ctx.createBiquadFilter();
-            filter.type = 'bandpass';
-            filter.frequency.value = filterFreq;
-            const gain = ctx.createGain();
-            gain.gain.setValueAtTime(volume, ctx.currentTime + startTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + duration);
-            noise.connect(filter);
-            filter.connect(gain);
-            gain.connect(ctx.destination);
-            noise.start(ctx.currentTime + startTime);
-            noise.stop(ctx.currentTime + startTime + duration);
-        };
+    function nextCue() {
+        const cue = settings.enabled ? queue.shift() : undefined;
+        if (!cue) { timer = undefined; return; }
+        cue.play(); timer = setTimeout(nextCue, cue.duration);
     }
-
-    function playNext() {
-        const cue = enabled ? queue.shift() : undefined;
-        if (!cue) { queueTimer = undefined; return; }
-        cue.play();
-        queueTimer = setTimeout(playNext, cue.duration);
-    }
-
     return {
-        setEnabled(value: boolean) {
-            enabled = value;
-            if (!value) {
-                queue.length = 0;
-                clearTimeout(queueTimer);
-                queueTimer = undefined;
-            }
-        },
+        subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+        settings: () => settings,
+        setEnabled(enabled: boolean) { update({ ...settings, enabled }); },
+        setVolume(volume: number) { if (Number.isFinite(volume)) update({ ...settings, volume: Math.max(0, Math.min(1, volume)) }); },
+        isEnabled: () => settings.enabled,
+        stop,
+        isPlaying: () => voices.size > 0 || timer !== undefined,
         enqueue(cues: { play: () => void; duration: number }[]) {
-            if (!enabled) return;
-            queue.push(...cues);
-            if (queueTimer === undefined) playNext();
+            if (!settings.enabled || settings.volume === 0 || !cues.length) return;
+            queue.push(...cues); if (timer === undefined) nextCue();
         },
-        unlock() {
-            if (!enabled) return;
-            try { getCtx(); } catch { /* Audio is optional on unsupported browsers. */ }
-        },
-        toggle() {
-            enabled = !enabled;
-            return enabled;
-        },
-        isEnabled() { return enabled; },
-
-        click() {
-            play(tone(800, 'sine', 0.08, 0, 0.15));
-        },
-
-        success() {
-            play((ctx) => {
-                tone(523, 'sine', 0.15, 0, 0.2)(ctx);
-                tone(659, 'sine', 0.15, 0.08, 0.2)(ctx);
-                tone(784, 'sine', 0.2, 0.16, 0.25)(ctx);
-            });
-        },
-
-        achievement() {
-            play((ctx) => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(200, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.3);
-                gain.gain.setValueAtTime(0.15, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(ctx.currentTime);
-                osc.stop(ctx.currentTime + 0.4);
-                [523, 659, 784, 1047].forEach((f) => {
-                    tone(f, 'triangle', 0.5, 0.25, 0.15)(ctx);
-                });
-                noise(0.3, 0.25, 0.08, 6000)(ctx);
-            });
-        },
-
-        levelUp() {
-            play((ctx) => {
-                const notes = [262, 330, 392, 523, 659, 784, 1047];
-                notes.forEach((f, i) => {
-                    tone(f, 'square', 0.2, i * 0.07, 0.1)(ctx);
-                });
-                [523, 659, 784, 1047].forEach((f) => {
-                    tone(f, 'triangle', 0.8, 0.5, 0.12)(ctx);
-                });
-                noise(0.5, 0.5, 0.06, 8000)(ctx);
-            });
-        },
-
-        bossVictory() {
-            play((ctx) => {
-                [196, 294, 392, 494, 587, 784].forEach((f, i) => tone(f, 'triangle', 0.45, i * 0.1, 0.15)(ctx));
-                noise(0.3, 0.5, 0.06, 4000)(ctx);
-            });
-        },
-
-        bossFailure() {
-            play((ctx) => {
-                [330, 294, 220, 165].forEach((f, i) => tone(f, 'triangle', 0.3, i * 0.13, 0.12)(ctx));
-            });
-        },
-
-        press() {
-            play((ctx) => {
-                tone(200, 'sine', 0.1, 0, 0.25)(ctx);
-                noise(0.05, 0, 0.1, 1000)(ctx);
-            });
-        },
-
-        habitDone() {
-            play((ctx) => {
-                tone(740, 'sine', 0.12, 0, 0.18)(ctx);
-                tone(988, 'sine', 0.24, 0.12, 0.16)(ctx);
-            });
-        },
-
-        habitUndo() {
-            play((ctx) => {
-                tone(400, 'sine', 0.15, 0, 0.15)(ctx);
-                tone(300, 'sine', 0.2, 0.08, 0.12)(ctx);
-            });
-        },
-
-        counterUp() {
-            play((ctx) => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(300, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.08);
-                gain.gain.setValueAtTime(0.15, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(ctx.currentTime);
-                osc.stop(ctx.currentTime + 0.1);
-            });
-        },
-
-        counterDown() {
-            play((ctx) => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(500, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(250, ctx.currentTime + 0.08);
-                gain.gain.setValueAtTime(0.12, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(ctx.currentTime);
-                osc.stop(ctx.currentTime + 0.1);
-            });
-        },
-
-        questComplete() {
-            play((ctx) => {
-                [659, 988, 1319].forEach((f, i) => {
-                    tone(f, 'triangle', 0.35, i * 0.14, 0.16)(ctx);
-                    tone(f * 2, 'sine', 0.2, i * 0.14, 0.05)(ctx);
-                });
-            });
-        },
-
-        streakBonus() {
-            play((ctx) => {
-                noise(0.4, 0, 0.1, 3000)(ctx);
-                noise(0.3, 0.1, 0.08, 4000)(ctx);
-                tone(1047, 'sine', 0.3, 0.2, 0.12)(ctx);
-                tone(1319, 'sine', 0.4, 0.3, 0.1)(ctx);
-            });
-        },
+        unlock() { if (settings.enabled) { try { getCtx(); } catch { /* Unsupported browser. */ } } },
+        click() { if (!voices.size && timer === undefined) play(() => { note(660, 0, .065, .06, -.1); note(990, .025, .065, .035, .1); }); },
+        success() { play(() => phrase([392, 523, 784], .075, .25, 130.81)); },
+        todoComplete() { play(() => phrase([659, 988], .07, .23)); },
+        habitDone() { play(() => phrase([554, 740, 1109], .09, .3, 185)); },
+        recoveryComplete() { play(() => { phrase([440, 659, 880], .11, .4, 146.83); shimmer(.12); }); },
+        trainingComplete() { play(() => { phrase([196, 294, 392, 587], .08, .3, 98); shimmer(0, .12); }); },
+        questComplete() { play(() => { phrase([659, 988, 1319], .14, .35, 164.81); shimmer(.2); }); },
+        achievement() { play(() => { phrase([523, 659, 784, 1047], .1, .5, 130.81); shimmer(.2, .4); }); },
+        levelUp() { play(() => { phrase([262, 330, 392, 523, 659, 784, 1047], .07, .35, 130.81); [523, 659, 784].forEach(f => note(f, .55, .8, .09)); shimmer(.5, .5); }); },
+        rankUp() { play(() => { phrase([196, 294, 392, 587, 784, 1175], .12, .6, 98); [392, 494, 587, 784].forEach(f => note(f, .6, 1.05, .08)); shimmer(.65, .6); }); },
+        bossVictory() { play(() => { phrase([196, 294, 392, 494, 587, 784], .1, .45, 98); shimmer(.45, .4); }); },
+        bossFailure() { play(() => phrase([330, 294, 220, 165], .13, .3, 82.41)); },
+        loss() { play(() => { note(330, 0, .24, .1); note(220, .12, .28, .09); }); },
+        counterUp() { play(() => phrase([440, 660], .05, .16)); },
     };
 })();
-
 export default AudioFX;

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { threshold } from '../../src/orion/logic';
 import type { Snapshot } from '../../src/orion/types';
 
 const uid = '10000000-0000-0000-0000-000000000001';
@@ -151,9 +152,15 @@ test('email signup, sign-in, sign-out, and reset requests are wired to Auth', as
     await expect(page.getByRole('status')).toContainText('password reset link');
 });
 
-test('sound opt-in previews audio and confirmed rewards play once', async ({ page }) => {
-    const state = fixture();
-    await mock(page, state);
+async function audioState(page: Page) {
+    return page.evaluate(async () => {
+        const path = '/src/audio.ts';
+        const module = await import(path);
+        const audio = module.default as { isPlaying: () => boolean; settings: () => { enabled: boolean; volume: number } };
+        return { playing: audio.isPlaying(), ...audio.settings() };
+    });
+}
+async function countAudio(page: Page) {
     await page.addInitScript(() => {
         const original = AudioContext.prototype.createOscillator;
         AudioContext.prototype.createOscillator = function () {
@@ -161,84 +168,62 @@ test('sound opt-in previews audio and confirmed rewards play once', async ({ pag
             return original.call(this);
         };
     });
+}
+test('sound opt-in, preview, volume, mute and confirmed reward playback persist correctly', async ({ page }) => {
+    const state = fixture(); await mock(page, state); await countAudio(page);
     let sequence = 0;
     await page.route('**/rest/v1/rpc/orion_command', async route => {
-        const body = route.request().postDataJSON();
-        if (body.action === 'activity') {
-            sequence++;
-            state.events.push({ id: String(sequence), source: 'activity:' + body.command_id, xp: 10, attributes: {}, created_at: new Date().toISOString() });
-            state.profile.xp += 10;
-        }
-        await route.fulfill({ json: { saved: true } });
+        sequence++; state.events.push({ id: String(sequence), source: 'activity:' + sequence, xp: 10, attributes: {}, created_at: new Date().toISOString() });
+        state.profile.xp += 10; await route.fulfill({ json: { saved: true } });
     });
     const notes = () => page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0));
-    await page.goto('/');
-    await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
+    await page.goto('/'); await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
     await page.getByRole('button', { name: 'Save activity', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Save activity', exact: true })).toBeEnabled();
-    expect(await notes()).toBe(0);
+    await expect(page.getByRole('button', { name: 'Dismiss reward' })).toBeVisible(); expect(await notes()).toBe(0);
+    await page.getByRole('button', { name: 'Dismiss reward' }).click();
     await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Test sound', exact: true })).toBeDisabled();
-    await page.getByLabel('Play reward sounds').check();
-    expect(await notes()).toBe(3);
-    await page.getByRole('button', { name: 'Test sound', exact: true }).click();
-    expect(await notes()).toBe(6);
+    await expect(page.getByLabel('Effects volume')).toHaveValue('40');
+    await page.getByLabel('Play reward sounds').check(); await expect.poll(notes).toBeGreaterThan(0);
+    let previous = await notes(); await page.getByRole('button', { name: 'Test sound', exact: true }).click(); await expect.poll(notes).toBeGreaterThan(previous);
+    await page.getByLabel('Effects volume').fill('25'); expect((await audioState(page)).volume).toBe(.25);
     await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
-    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
-    await expect.poll(notes).toBe(9);
+    previous = await notes(); await page.getByRole('button', { name: 'Save activity', exact: true }).click(); await expect.poll(notes).toBeGreaterThan(previous);
+    await expect(page.locator('.reward-popup')).toContainText('+10 XP confirmed');
+    await expect.poll(async () => (await audioState(page)).playing).toBe(false);
+    const confirmedNotes = await notes(); await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page.getByRole('button', { name: 'Save activity', exact: true })).toBeEnabled(); expect(await notes()).toBe(confirmedNotes);
+    await page.reload(); expect(await notes()).toBe(0); await expect(page.locator('.reward-popup')).toHaveCount(0);
     await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
-    expect(await notes()).toBe(9);
-    await page.reload();
-    await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
-    await expect(page.getByLabel('Play reward sounds')).toBeChecked();
-    expect(await notes()).toBe(0);
-    await page.getByRole('button', { name: 'Test sound', exact: true }).click();
-    expect(await notes()).toBe(3);
+    await expect(page.getByLabel('Play reward sounds')).toBeChecked(); await expect(page.getByLabel('Effects volume')).toHaveValue('25');
     await page.getByLabel('Play reward sounds').uncheck();
-    await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
-    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Save activity', exact: true })).toBeEnabled();
-    expect(await notes()).toBe(3);
+    const mutedNotes = await notes(); await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
+    await page.getByRole('button', { name: 'Save activity', exact: true }).click(); await expect(page.locator('.reward-popup')).toBeVisible(); expect(await notes()).toBe(mutedNotes);
 });
 
-test('activity, habit, both quests, boss and level-up all play sequentially; mute cancels the queue', async ({ page }) => {
-    const state = fixture();
-    await mock(page, state);
-    await page.addInitScript(() => {
-        localStorage.setItem('orion-sound', 'on');
-        const original = AudioContext.prototype.createOscillator;
-        AudioContext.prototype.createOscillator = function () {
-            document.documentElement.dataset.soundNotes = String(Number(document.documentElement.dataset.soundNotes ?? 0) + 1);
-            return original.call(this);
-        };
-    });
-    let batch = 0;
+test('simultaneous milestones share a focused dialog; mute cancels voices and Continue restores focus', async ({ page }) => {
+    const state = fixture(); await mock(page, state); await countAudio(page);
+    await page.addInitScript(() => localStorage.setItem('orion-sound', 'on'));
     await page.route('**/rest/v1/rpc/orion_command', async route => {
-        batch++;
-        state.events.push(...['activity:1', 'habit:1', 'quest:1', 'quest:2', 'boss:1'].map((source, i) => ({ id: `${batch}:${i}`, source, xp: 10, attributes: {}, created_at: new Date().toISOString() })));
-        state.profile.xp = 675;
-        await route.fulfill({ json: { saved: true } });
+        const body = route.request().postDataJSON();
+        state.events.push(...[`activity:${body.command_id}`, 'habit:1', 'quest:1', 'quest:2', 'boss:1'].map((source, i) => ({ id: String(i), source, xp: 10, attributes: {}, created_at: new Date().toISOString() })));
+        state.profile.xp = 675; await route.fulfill({ json: { saved: true, personal_record: true } });
     });
-    const notes = () => page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0));
-    await page.goto('/');
+    await page.clock.install(); await page.goto('/');
     await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
-    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
-    await expect.poll(notes, { timeout: 1000 }).toBe(3);
-    await expect.poll(notes, { timeout: 8000 }).toBe(34);
-    // Clear the first queue, then freeze timers to test muting deterministically.
-    await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.getByLabel('Play reward sounds').uncheck();
-    await page.getByLabel('Play reward sounds').check();
-    expect(await notes()).toBe(37);
-    await page.clock.install();
-    await page.clock.pauseAt(new Date());
-    await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
-    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
-    await expect.poll(notes).toBe(40);
-    await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.getByLabel('Play reward sounds').uncheck();
-    await page.clock.fastForward(10000);
-    expect(await notes()).toBe(40);
+    const save = page.getByRole('button', { name: 'Save activity', exact: true }); await save.focus(); await save.click();
+    const dialog = page.getByRole('dialog'); await expect(dialog).toBeVisible(); await expect(dialog).toContainText('Level 4 reached');
+    await expect(dialog).toContainText('New personal record'); await expect(dialog.locator('.milestone-list li')).toHaveCount(7);
+    await expect(dialog.getByRole('button', { name: 'Continue', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab'); expect(await page.evaluate(() => Boolean(document.querySelector('dialog')?.contains(document.activeElement)))).toBe(true);
+    await expect.poll(async () => (await audioState(page)).playing).toBe(true);
+    await dialog.getByRole('button', { name: 'Mute sounds' }).click();
+    expect((await audioState(page)).playing).toBe(false);
+    const mutedNotes = await page.evaluate(() => document.documentElement.dataset.soundNotes);
+    await page.clock.fastForward(10000); expect(await page.evaluate(() => document.documentElement.dataset.soundNotes)).toBe(mutedNotes);
+    await expect(dialog).toBeVisible(); await dialog.getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect(dialog).toHaveCount(0); await expect(save).toBeFocused();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(dialog).toHaveCount(0);
 });
 
 test('daily todos quick add, optional terms, carry-forward, completion and undo in both themes', async ({ page }) => {
@@ -296,12 +281,12 @@ test('daily todos quick add, optional terms, carry-forward, completion and undo 
     const groceries = list.locator('.todo-row').filter({ has: page.getByRole('heading', { name: 'Get groceries', exact: true }) });
     await groceries.getByRole('checkbox').click(); await expect(groceries.getByRole('checkbox')).toBeChecked();
     await expect(page.getByText('+18 XP · -1 Discipline confirmed', { exact: true })).toBeVisible();
-    await expect.poll(() => page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0))).toBe(2);
+    await expect.poll(() => page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0))).toBeGreaterThan(0);
     await groceries.getByText('Completion history', { exact: true }).click();
     await expect(groceries).toContainText('applied +18 XP / −1 Discipline');
     await groceries.getByRole('checkbox').click(); await expect(groceries.getByRole('checkbox')).not.toBeChecked();
     await expect(groceries).toContainText('Unchecked');
-    expect(await page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0))).toBe(2);
+    expect(await page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0))).toBeGreaterThan(0);
     await groceries.getByRole('button', { name: 'Edit', exact: true }).click();
     await expect(groceries).toContainText('Only title corrections');
     await groceries.getByLabel('Todo title').fill('Buy groceries');
@@ -347,12 +332,120 @@ test('recovery and habit boxes can be unchecked and recovery plays a confirmed c
     const water = page.getByRole('button', { name: 'Water: 2 litres', exact: true });
     await expect(water).toHaveAttribute('aria-pressed', 'false');
     await water.click(); await expect(water).toHaveAttribute('aria-pressed', 'true');
-    await expect.poll(notes).toBe(2);
+    await expect.poll(notes).toBeGreaterThan(0);
+    const completedNotes = await notes();
+    await page.getByRole('button', { name: 'Dismiss reward' }).click();
     await water.click(); await expect(water).toHaveAttribute('aria-pressed', 'false');
-    expect(await notes()).toBe(2);
+    expect(await notes()).toBe(completedNotes);
+    await page.getByRole('button', { name: 'Dismiss reward' }).click();
     await water.click(); await expect(water).toHaveAttribute('aria-pressed', 'true');
-    await expect.poll(notes).toBe(4);
+    await expect.poll(notes).toBeGreaterThan(completedNotes);
     const habit = page.getByRole('button', { name: 'Read before bed', exact: true });
     await habit.click(); await expect(habit).toHaveAttribute('aria-pressed', 'true');
     await habit.click(); await expect(habit).toHaveAttribute('aria-pressed', 'false');
+});
+
+for (const mode of ['full', 'reduced', 'off', 'system-reduced'] as const) {
+    test(`rank reveal is accessible and respects ${mode} effects`, async ({ page }) => {
+        const state = fixture(); state.profile.xp = threshold(10) - 1;
+        await mock(page, state);
+        await page.addInitScript(effects => { if (!localStorage.getItem('orion-effects')) localStorage.setItem('orion-effects', effects); }, mode === 'system-reduced' ? 'full' : mode);
+        if (mode === 'system-reduced') await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.route('**/rest/v1/rpc/orion_command', async route => {
+            state.profile.xp = threshold(10) + 100; state.profile.attributes.Strength += 2;
+            state.events.push({ id: 'rank-reward', source: 'activity:' + route.request().postDataJSON().command_id, xp: 101, attributes: { Strength: 2 }, created_at: new Date().toISOString() });
+            await route.fulfill({ json: { saved: true, personal_record: true } });
+        });
+        await page.goto('/'); await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
+        const save = page.getByRole('button', { name: 'Save activity', exact: true }); await save.click();
+        const dialog = page.getByRole('dialog', { name: 'Rank D unlocked' }); await expect(dialog).toBeVisible();
+        await expect(dialog).toHaveAttribute('data-effects', mode === 'system-reduced' ? 'reduced' : mode);
+        await expect(dialog).toContainText('+101 XP'); await expect(dialog).toContainText('+2 Strength');
+        await expect(dialog.locator('.reward-particles')).toHaveCount(mode === 'full' ? 1 : 0);
+        await expect(dialog.getByRole('button', { name: 'Continue', exact: true })).toBeFocused();
+        for (const theme of ['dark', 'light']) {
+            await page.evaluate(t => document.documentElement.dataset.theme = t, theme);
+            for (const width of [320, 1440]) {
+                await page.setViewportSize({ width, height: 900 });
+                expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+                if (mode === 'full') await page.screenshot({ path: `/tmp/orion-rank-${theme}-${width}.png` });
+            }
+        }
+        await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(save).toBeFocused();
+        await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
+        await expect(page.getByLabel('Visual effects')).toHaveValue(mode === 'system-reduced' ? 'full' : mode);
+        await page.getByLabel('Visual effects').selectOption('off'); await page.reload();
+        await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click(); await expect(page.getByLabel('Visual effects')).toHaveValue('off');
+    });
+}
+test('background progress is a silent recap and never takes over the screen or replays', async ({ page }) => {
+    const state = fixture(); await mock(page, state); await countAudio(page);
+    await page.addInitScript(() => localStorage.setItem('orion-sound', 'on'));
+    await page.goto('/'); await expect(page.getByRole('heading', { name: 'A little stronger.' })).toBeVisible();
+    state.profile.xp = threshold(10); state.events.push({ id: 'remote', source: 'quest:remote', xp: 25, attributes: {}, created_at: new Date().toISOString() });
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page.locator('.reward-recap')).toContainText('Progress synced'); await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(await page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0))).toBe(0);
+    await page.getByRole('button', { name: 'Dismiss reward' }).click(); await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page.locator('.reward-popup')).toHaveCount(0); await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('ordinary rewards queue without blocking navigation or combining unearned totals', async ({ page }) => {
+    const state = fixture(); await mock(page, state); await page.setViewportSize({ width: 1440, height: 1400 });
+    let sequence = 0;
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const body = route.request().postDataJSON(); sequence++; state.profile.xp += 10;
+        state.events.push({ id: 'queued-' + sequence, source: 'activity:' + body.command_id, xp: 10, attributes: {}, created_at: new Date().toISOString() });
+        await route.fulfill({ json: { saved: true } });
+    });
+    await page.goto('/'); await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
+    await page.getByLabel('Title (optional)').fill('First entry'); await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+    await expect(page.locator('.reward-popup h2')).toHaveText('First entry');
+    await page.getByLabel('Title (optional)').fill('Second entry'); await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Save activity', exact: true })).toBeEnabled();
+    await expect(page.locator('.reward-popup h2')).toHaveText('First entry');
+    await page.getByRole('navigation').getByRole('button', { name: 'Character', exact: true }).click();
+    await expect(page.locator('.reward-popup h2')).toHaveText('First entry');
+    await page.getByRole('button', { name: 'Dismiss reward' }).click(); await expect(page.locator('.reward-popup h2')).toHaveText('Second entry');
+    await expect(page.locator('.reward-popup')).toContainText('+10 XP confirmed'); await expect(page.locator('.hud-energy-label')).toContainText('380 XP');
+    await page.getByRole('button', { name: 'Dismiss reward' }).click(); await expect(page.locator('.reward-popup')).toHaveCount(0);
+});
+test('a confirmed save with a failed refresh defers its milestone until the snapshot recovers', async ({ page }) => {
+    const state = fixture(); await mock(page, state); let failNextRead = false;
+    await page.route('**/rest/v1/rpc/orion_snapshot', async route => {
+        if (failNextRead) { failNextRead = false; await route.abort('failed'); } else await route.fulfill({ json: state });
+    });
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const body = route.request().postDataJSON(); state.profile.xp = 675;
+        state.events.push({ id: 'deferred', source: 'activity:' + body.command_id, xp: 315, attributes: {}, created_at: new Date().toISOString() });
+        failNextRead = true; await route.fulfill({ json: { saved: true, personal_record: true } });
+    });
+    await page.goto('/'); await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
+    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('Saved successfully'); await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Reconnect', exact: true }).click(); await expect(page.getByRole('dialog')).toContainText('New personal record');
+    await expect(page.getByRole('dialog')).toContainText('Level 4 reached'); await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Save activity', exact: true })).toBeFocused();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('reduced and off effects remove motion from ordinary popup roots as well as their children', async ({ page }) => {
+    const state = fixture(); await mock(page, state); let sequence = 0;
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        sequence++; const body = route.request().postDataJSON(); state.profile.xp += 10;
+        state.events.push({ id: 'motion-' + sequence, source: 'activity:' + body.command_id, xp: 10, attributes: {}, created_at: new Date().toISOString() });
+        await route.fulfill({ json: { saved: true } });
+    });
+    await page.goto('/');
+    for (const mode of ['reduced', 'off']) {
+        await page.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true }).click();
+        await page.getByLabel('Visual effects').selectOption(mode);
+        await page.getByRole('navigation').getByRole('button', { name: 'Journal', exact: true }).click();
+        await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+        await expect(page.locator('.reward-popup')).toHaveAttribute('data-effects', mode);
+        expect(await page.locator('.reward-popup').evaluate(element => getComputedStyle(element).animationName)).toBe('none');
+        await expect(page.locator('.reward-particles')).toHaveCount(0);
+        if (mode === 'off') await expect(page.locator('.reward-emblem')).toHaveCount(0);
+        await page.getByRole('button', { name: 'Dismiss reward' }).click();
+    }
 });

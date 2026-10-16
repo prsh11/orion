@@ -4,29 +4,18 @@ import { OrionContext } from './context';
 import type { OrionState } from './context';
 import type { Command, Snapshot } from './types';
 import { CommandError, sendCommand, snapshot, supabase } from './client';
-import { levelFor } from './logic';
+import { feedbackForUpdate } from './feedback';
+import type { FeedbackOrigin, RewardPresentation } from './feedback';
 import AudioFX from '../audio';
-import { playSnapshotSound } from './sounds';
 
-type Action = { type: 'busy' } | { type: 'snapshot'; data: Snapshot } | { type: 'error'; message: string; pending?: Command } | { type: 'notice'; text: string } | { type: 'dismiss' } | { type: 'pending'; command: Command | null };
+
+type Action = { type: 'busy' } | { type: 'snapshot'; data: Snapshot; presentation: RewardPresentation | null } | { type: 'error'; message: string; pending?: Command } | { type: 'notice'; text: string } | { type: 'dismiss' } | { type: 'pending'; command: Command | null } | { type: 'dismissPresentation' };
 function reducer(state: OrionState, action: Action): OrionState {
     switch (action.type) {
         case 'busy': return { ...state, busy: true, error: null };
-        case 'snapshot': {
-            const notices = [...state.notices];
-            if (state.data) {
-                const before = state.data.profile.xp;
-                const after = action.data.profile.xp;
-                const changed = Object.entries(action.data.profile.attributes).flatMap(([attribute, value]) => {
-                    const previous = state.data?.profile.attributes[attribute as keyof typeof action.data.profile.attributes] ?? value;
-                    const delta = value - previous;
-                    return delta ? [`${delta > 0 ? '+' : ''}${delta} ${attribute}`] : [];
-                });
-                if (before !== after || changed.length) notices.push([`${after - before > 0 ? '+' : ''}${after - before} XP`, ...changed].join(' · ') + ' confirmed');
-                for (let n = levelFor(before) + 1; n <= levelFor(after); n++) notices.push(`Level ${n} reached`);
-            }
-            return { ...state, data: action.data, busy: false, error: null, notices };
-        }
+        case 'snapshot': return { ...state, data: action.data, busy: false, error: null,
+            presentations: action.presentation ? [...state.presentations, action.presentation] : state.presentations };
+        case 'dismissPresentation': return { ...state, presentations: state.presentations.slice(1) };
         case 'error': return { ...state, busy: false, error: action.message, pending: action.pending ?? state.pending };
         case 'pending': return { ...state, pending: action.command };
         case 'notice': return { ...state, notices: [...state.notices, action.text] };
@@ -43,15 +32,19 @@ export function OrionProvider({ userId, children }: { userId: string; children: 
                 pending = { id: saved.id, action: saved.action, payload: saved.payload as Record<string, unknown> };
             }
         } catch { /* Storage may be unavailable. */ }
-        return { data: null, busy: false, error: null, pending, notices: [] };
+        return { data: null, busy: false, error: null, pending, notices: [], presentations: [] };
     });
     const inFlight = useRef(false);
     const confirmedSnapshot = useRef<Snapshot | null>(null);
-    const acceptSnapshot = useCallback((data: Snapshot, personalRecord = false) => {
-        playSnapshotSound(confirmedSnapshot.current, data, personalRecord);
+    const deferredOrigin = useRef<FeedbackOrigin | undefined>(undefined);
+    const acceptSnapshot = useCallback((data: Snapshot, origin?: FeedbackOrigin) => {
+        const presentation = feedbackForUpdate(confirmedSnapshot.current, data, origin ?? deferredOrigin.current);
         confirmedSnapshot.current = data;
-        dispatch({ type: 'snapshot', data });
+        deferredOrigin.current = undefined;
+        dispatch({ type: 'snapshot', data, presentation });
+        return presentation;
     }, []);
+    const dismissPresentation = useCallback(() => { dispatch({ type: 'dismissPresentation' }); }, []);
     const refresh = useCallback(async () => {
         if (inFlight.current) return;
         inFlight.current = true;
@@ -62,6 +55,7 @@ export function OrionProvider({ userId, children }: { userId: string; children: 
     }, [acceptSnapshot]);
     const execute = useCallback(async (command: Command) => {
         if (inFlight.current) return false;
+        const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
         inFlight.current = true;
         dispatch({ type: 'busy' });
         dispatch({ type: 'pending', command });
@@ -80,8 +74,9 @@ export function OrionProvider({ userId, children }: { userId: string; children: 
                 await supabase?.auth.signOut();
                 window.location.reload(); return true;
             }
-            acceptSnapshot(await snapshot(), result.personal_record);
-            dispatch({ type: 'notice', text: result.personal_record ? 'Saved. New personal record!' : 'Saved to your account' });
+            deferredOrigin.current = { command, returnFocus, personalRecordCommandId: result.personal_record ? command.id : deferredOrigin.current?.personalRecordCommandId, personalRecord: Boolean(result.personal_record || deferredOrigin.current?.personalRecord) };
+            const presentation = acceptSnapshot(await snapshot(), deferredOrigin.current);
+            if (!presentation) dispatch({ type: 'notice', text: 'Saved to your account' });
             return true;
         } catch (error) {
             const retryable = !confirmed && (!(error instanceof CommandError) || error.retryable);
@@ -114,5 +109,6 @@ export function OrionProvider({ userId, children }: { userId: string; children: 
         const timer = window.setInterval(focus, 60_000);
         return () => { window.removeEventListener('focus', focus); clearInterval(timer); };
     }, [refresh]);
-    return <OrionContext.Provider value={{ ...state, refresh, command, retry: async () => { if (state.pending) await execute(state.pending); else await refresh(); }, dismiss: () => dispatch({ type: 'dismiss' }) }}>{children}</OrionContext.Provider>;
+    useEffect(() => () => { AudioFX.stop(); }, []);
+    return <OrionContext.Provider value={{ ...state, refresh, command, retry: async () => { if (state.pending) await execute(state.pending); else await refresh(); }, dismissPresentation, dismiss: () => dispatch({ type: 'dismiss' }) }}>{children}</OrionContext.Provider>;
 }

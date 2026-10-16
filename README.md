@@ -146,7 +146,24 @@ and units. An uncertain save retains its command ID across reloads; use **Retry
 save**. Confirmed server rejections roll back and leave the draft editable. A
 failed refresh after a successful mutation reports that the save succeeded.
 Snapshots refresh after saves, navigation, focus, and every minute. Confirmed
-rewards and level notifications are queued; sound is off until enabled.
+rewards are presented in one visual/audio queue. Ordinary completions show brief
+XP and attribute gains. Levels, rank promotions, personal records, and boss
+victories share a milestone dialog; Continue or Escape dismisses it and returns
+focus to the originating control. Initial loads and retries never replay rewards.
+Background updates produce a silent recap instead of a modal.
+
+The cosmic HUD, attribute sigils, rank emblems, and objective crests are native
+SVG/CSS. All reward values come from confirmed profile changes, including floors;
+this presentation adds no gameplay rules or database migrations. Losses and late
+completion use restrained feedback rather than victory effects.
+
+Sound stays off until enabled in the HUD or Settings. Settings provides a preview,
+volume (40% by default), and Full/Reduced/Off visual effects. These preferences
+persist on this device. Reduced motion from the operating system overrides Full.
+Sound effects are synthesized with Web Audio; there are no audio downloads,
+background music, or ambience. Muting or dismissing a presentation stops active
+voices and queued cues; unmuting does not replay them. Browsers without Web Audio
+still show all visual feedback.
 
 Settings includes JSON account export and permanent deletion with a typed
 confirmation. Deletion cascades through private server records and clears this

@@ -5,13 +5,15 @@ import type { Difficulty, Period, Quest, QuestDefinition } from './types';
 import { metricLabel, questReward } from './logic';
 import Bosses from './Bosses';
 import Todos from './Todos';
+import GameIcon from './GameIcon';
 
 export function QuestCard({ quest: q }: { quest: Quest }) {
-    const { command, busy, data } = useOrion();
+    const { command, busy, data, presentations } = useOrion();
     const reward = { xp: q.reward_xp ?? questReward(q.period, q.difficulty).xp, points: q.reward_points ?? questReward(q.period, q.difficulty).points };
     const expired = q.period !== 'one-off' && q.ends_at !== null && q.ends_at <= (data?.server_time ?? '');
     const overdue = q.due_at && q.due_at <= (data?.server_time ?? '');
-    return <article className={`quest-card ${q.completed_at ? 'complete' : ''}`}><div className="entry-heading"><span className="attribute-tag violet">{q.period}</span><span>{q.completed_at ? 'Complete' : q.archived ? 'Archived' : expired ? 'Period ended' : overdue ? 'Overdue' : q.due_at || q.ends_at ? 'Due' : 'No deadline'}</span></div><h3>{q.title}</h3><p className="muted">{q.target} {metricLabel[q.metric]} · {q.attribute}</p><progress max={q.target} value={q.progress} aria-label={`${q.title}: ${q.progress} of ${q.target}`} /><p className="reward-preview">+{reward.xp} XP / +{reward.points} {q.attribute}</p>
+    const justCompleted = q.completed_at && presentations[0]?.eventIds.some(id => data?.events.some(event => event.id === id && event.source === `quest:${q.id}`));
+    return <article className={`quest-card ${q.completed_at ? 'complete' : ''} ${justCompleted ? 'quest-just-completed' : ''}`}><div className="entry-heading"><span className="attribute-tag violet">{q.attribute && <GameIcon name={q.attribute} />}{q.period}</span><span>{q.completed_at ? 'Complete' : q.archived ? 'Archived' : expired ? 'Period ended' : overdue ? 'Overdue' : q.due_at || q.ends_at ? 'Due' : 'No deadline'}</span></div><h3><GameIcon name={q.completed_at ? 'check' : 'quest'} />{q.title}</h3><p className="muted">{q.target} {metricLabel[q.metric]} · {q.attribute}</p><progress max={q.target} value={q.progress} aria-label={`${q.title}: ${q.progress} of ${q.target}`} /><p className="reward-preview">+{reward.xp} XP / +{reward.points} {q.attribute}</p>
         <small>{q.due_at || q.ends_at ? `Due ${new Date((q.due_at || q.ends_at)!).toLocaleString(undefined, { timeZone: data?.profile.timezone })}` : 'No deadline'} · {q.difficulty ?? 'medium'}</small>
         {q.completed_at && <p>Completed {new Date(q.completed_at).toLocaleString(undefined, { timeZone: data?.profile.timezone })}. Reward: {reward.xp} XP / {reward.points} {q.attribute}. Penalty: −{q.penalty_xp ?? 0} XP / −{q.penalty_points ?? 0} {q.attribute}. Net: +{reward.xp - (q.penalty_xp ?? 0)} XP / +{reward.points - (q.penalty_points ?? 0)} {q.attribute}.</p>}
         {!q.completed_at && q.due_at && <p className="muted">Late completion: −{Math.ceil(reward.xp / 4)} XP / −1 {q.attribute}; net +{reward.xp - Math.ceil(reward.xp / 4)} XP / +{reward.points - 1} {q.attribute}.</p>}

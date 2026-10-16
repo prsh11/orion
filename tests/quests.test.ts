@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
+import { feedbackForUpdate } from '../src/orion/feedback';
 import type { Snapshot } from '../src/orion/types';
 const db = new PGlite();
 let migrationUser = ''; let completedId = ''; let xpBefore = 0; let legacyOneOff = '';
@@ -146,4 +147,34 @@ test('all automatic metrics count new matching activity and manual counts suppor
         await command('set_quest_objective', { id: q.id, objective_id: count.id, progress: 3 });
         assert.equal((await snapshot()).quests[0]!.status, 'completed');
     }
+});
+
+
+test('monthly 20 km running quest completes on the final cumulative run and rewards exactly once', async () => {
+    await user();
+    await command('activity', { ...activity('running', 30), metres: 20000 });
+    await command('create_quest', mission({ title: 'Run 20 km this month', timeline: 'monthly', attribute: 'Endurance', objectives: [{ title: 'Run 20 km', metric: 'metres', target: 20000, activity_kind: 'running', attribute: 'Endurance' }] }));
+    let before = await snapshot(); const questId = before.quests[0]!.id;
+    assert.equal(before.quests[0]!.objectives![0]!.progress, 0, 'a run before acceptance must not count');
+    for (const metres of [5000, 7500]) {
+        await command('activity', { ...activity('running', 30), metres });
+    }
+    before = await snapshot();
+    assert.equal(before.quests[0]!.objectives![0]!.progress, 12500);
+    assert.equal(before.quests[0]!.status, 'active');
+    const payload = { ...activity('running', 30), metres: 7500 }; const cid = randomUUID();
+    await command('activity', payload, cid);
+    const after = await snapshot(); const quest = after.quests.find(q => q.id === questId)!;
+    assert.equal(quest.objectives![0]!.progress, 20000);
+    assert.equal(quest.status, 'completed'); assert.ok(quest.completed_at);
+    assert.equal(after.profile.xp - before.profile.xp, 30 + quest.reward_xp);
+    assert.equal(after.profile.attributes.Endurance - before.profile.attributes.Endurance, 1 + quest.reward_points);
+    assert.equal(after.events.filter(e => e.source === `quest:${questId}`).length, 1);
+    const presentation = feedbackForUpdate(before, after, { command: { id: cid, action: 'activity', payload } })!;
+    assert.equal(presentation.mode, 'milestone');
+    assert.ok(presentation.items.some(item => item.title === 'Quest complete: Run 20 km this month' && item.sound === 'questComplete' && item.milestone));
+    await command('activity', payload, cid);
+    const replay = await snapshot();
+    assert.equal(replay.profile.xp, after.profile.xp);
+    assert.equal(feedbackForUpdate(after, replay, { command: { id: cid, action: 'activity', payload } }), null);
 });

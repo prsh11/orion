@@ -96,3 +96,28 @@ test('PostgreSQL: concurrent todo completion and undo apply each outcome once', 
         assert.equal((await pool.query('select count(*)::int n from public.progression_events where user_id=$1', [user])).rows[0].n, 2);
     } finally { await pool.query('delete from auth.users where id=$1', [user]); await pool.end(); }
 });
+
+
+test('PostgreSQL: concurrent equal gym PRs grant one bonus and retries keep the original result', { skip: !process.env.ORION_TEST_DATABASE_URL }, async () => {
+    const pool = new pg.Pool({ connectionString: process.env.ORION_TEST_DATABASE_URL, max: 4 });
+    const user = randomUUID(); const exercise_id = '00000000-0000-0000-0000-000000000001';
+    const payload = (kg: number) => ({ id: randomUUID(), kind: 'gym', title: 'Concurrent lift', minutes: 0, occurred_at: new Date().toISOString(), sets: [{ exercise_id, reps: 10, kg }] });
+    const run = async (id: string, content: ReturnType<typeof payload>) => {
+        const connection = await pool.connect();
+        try {
+            await connection.query('begin'); await connection.query("select set_config('request.jwt.claim.sub',$1,true)", [user]); await connection.query('set local role authenticated');
+            const result = await connection.query<{ r: { personal_record: boolean } }>("select public.orion_command($1,'activity',$2::jsonb) r", [id, JSON.stringify(content)]);
+            await connection.query('commit'); return result.rows[0]!.r;
+        } catch (error) { await connection.query('rollback'); throw error; }
+        finally { connection.release(); }
+    };
+    try {
+        await pool.query('insert into auth.users(id) values($1)', [user]);
+        await run(randomUUID(), payload(20));
+        const id = randomUUID(); const lift = payload(21);
+        const results = await Promise.all([run(id, lift), run(randomUUID(), payload(21))]);
+        assert.equal(results.filter(r => r.personal_record).length, 1);
+        assert.deepEqual(await run(id, lift), results[0]);
+        assert.equal((await pool.query('select xp from public.profiles where id=$1', [user])).rows[0].xp, 40);
+    } finally { await pool.query('delete from auth.users where id=$1', [user]); await pool.end(); }
+});

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { baseReward, bestWeight, dayKey, deadlineInput, fromKg, fromMetres, levelFor, pace, questReward, rankFor, threshold, toKg, toMetres, volume } from '../src/orion/logic';
+import { baseReward, bestWeight, dayKey, dateTimeInput, dateTimeInstant, deadlineInput, fromKg, fromMetres, levelFor, pace, questReward, rankFor, threshold, toKg, toMetres, volume } from '../src/orion/logic';
 import { parseSave } from '../src/save';
 
 test('level thresholds and ranks include exact floored boundaries and reductions', () => {
@@ -47,4 +47,25 @@ test('deadline form values use the profile timezone across date and DST boundari
     assert.equal(deadlineInput('2026-10-15T23:30:00Z', 'Asia/Kolkata'), '2026-10-16T05:00');
     assert.equal(deadlineInput('2026-03-08T06:30:00Z', 'America/New_York'), '2026-03-08T01:30');
     assert.equal(deadlineInput('2026-03-08T07:30:00Z', 'America/New_York'), '2026-03-08T03:30');
+});
+
+
+test('activity timestamps convert profile wall time to UTC with fractional-hour offsets', () => {
+    assert.equal(dateTimeInput('2026-10-16T06:50:44Z', 'Asia/Kolkata'), '2026-10-16T12:20:44');
+    assert.equal(dateTimeInstant('2026-10-16T12:20:44', 'Asia/Kolkata'), '2026-10-16T06:50:44.000Z');
+    assert.equal(dateTimeInstant('2026-10-16T00:15', 'Asia/Kolkata'), '2026-10-15T18:45:00.000Z');
+    for (const timezone of ['UTC', 'Asia/Kolkata', 'Asia/Kathmandu', 'America/Los_Angeles', 'Australia/Lord_Howe']) {
+        const instant = '2026-10-16T06:50:44.000Z';
+        assert.equal(dateTimeInstant(dateTimeInput(instant, timezone), timezone), instant);
+    }
+});
+
+test('activity times reject invalid dates and DST gaps, and resolve repeated hours consistently', () => {
+    assert.equal(dateTimeInstant('2026-03-08T02:30', 'America/New_York'), null);
+    assert.equal(dateTimeInstant('2026-11-01T01:30', 'America/New_York'), '2026-11-01T05:30:00.000Z');
+    assert.equal(dateTimeInstant('2026-11-01T02:30', 'America/New_York'), '2026-11-01T07:30:00.000Z');
+    assert.equal(dateTimeInstant('2026-02-30T12:00', 'Asia/Kolkata'), null);
+    assert.equal(dateTimeInstant('2026-10-16T25:00', 'UTC'), null);
+    assert.equal(dateTimeInstant('', 'UTC'), null);
+    assert.equal(dateTimeInstant('2026-10-16T12:00', 'Invalid/Zone'), null);
 });

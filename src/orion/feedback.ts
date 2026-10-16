@@ -27,7 +27,9 @@ export function feedbackForUpdate(before: Snapshot | null, after: Snapshot, orig
             (item.milestone ? milestones : items).push(item);
         } else if (source.startsWith('quest:') && event.xp > 0) {
             const quest = after.quests.find(q => q.id === id); const late = Boolean(quest?.penalty_xp);
-            items.push({ id: event.id, title: late ? `Completed late: ${quest?.title ?? 'Quest'}` : quest?.title ?? 'Quest complete', icon: late ? 'loss' : 'quest', sound: late ? 'loss' : 'questComplete' });
+            const milestone = Boolean(quest?.timeline && !late);
+            const item: RewardItem = { id: event.id, title: late ? `Completed late: ${quest?.title ?? 'Quest'}` : milestone ? `Quest complete: ${quest?.title}` : quest?.title ?? 'Quest complete', icon: late ? 'loss' : 'quest', sound: late ? 'loss' : 'questComplete', ...(milestone ? { milestone: true } : {}) };
+            (milestone ? milestones : items).push(item);
         }
         else if (source.startsWith('todo:') && event.xp > 0) {
             const todo = after.quests.find(q => q.id === id); const late = Boolean(todo?.penalty_xp || Object.values(event.attributes).some(delta => delta < 0));
@@ -45,7 +47,14 @@ export function feedbackForUpdate(before: Snapshot | null, after: Snapshot, orig
         } else if (source.startsWith('quest-late:') && !fresh.some(e => e.source === `quest:${id}`)) items.push({ id: event.id, title: 'Late completion adjustment', icon: 'loss', sound: 'loss' });
     }
     const recordCommandId = origin.personalRecordCommandId ?? origin.command?.id;
-    if (origin.personalRecord && fresh.some(e => recordCommandId ? e.source === `activity:${recordCommandId}` : e.source.startsWith('activity:'))) milestones.push({ id: `record:${origin.command?.id ?? fresh[0]!.id}`, title: 'New personal record', icon: 'star', sound: 'achievement', milestone: true });
+    if (origin.personalRecord && fresh.some(e => recordCommandId ? e.source === `activity:${recordCommandId}` : e.source.startsWith('activity:'))) {
+        const activity = after.activities.find(a => a.id === origin.command?.payload.id);
+        const reward = activity?.reward_details;
+        const records = reward?.records ?? [];
+        if (reward?.base_xp !== undefined && reward.pr_xp !== undefined) items.push({ id: `breakdown:${recordCommandId}`, title: `Workout: ${reward.base_xp} XP + ${reward.pr_xp} PR XP`, icon: 'training' });
+        if (records.length) for (const [index, record] of records.entries()) milestones.push({ id: `record:${recordCommandId}:${record.exercise_id}`, title: `New personal record: ${record.exercise_name}`, icon: 'star', ...(index === 0 ? { sound: 'achievement' as const } : {}), milestone: true });
+        else milestones.push({ id: `record:${origin.command?.id ?? fresh[0]!.id}`, title: 'New personal record', icon: 'star', sound: 'achievement', milestone: true });
+    }
     const level = levelFor(after.profile.xp); const oldLevel = levelFor(before.profile.xp); const rank = rankFor(level);
     const earned = items.some(item => item.sound !== 'loss' && item.sound !== 'bossFailure') || milestones.length > 0;
     if (level > oldLevel && earned) milestones.push({ id: `level:${level}`, title: `Level ${level} reached`, icon: 'orbit', sound: 'levelUp', milestone: true });

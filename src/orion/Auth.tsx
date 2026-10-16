@@ -3,6 +3,7 @@ import type { ReactNode, FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './client';
 import { OrionProvider } from './store';
+import { FormActions } from './FormLayout';
 import RpgArt from './RpgArt';
 
 export default function Auth({ children }: { children: ReactNode }) {
@@ -56,7 +57,7 @@ export default function Auth({ children }: { children: ReactNode }) {
                     <form onSubmit={event => { void submit(event); }}>
                         {mode !== 'password' && <label>Email<input name="email" type="email" autoComplete="email" required /></label>}
                         {mode !== 'reset' && <label>Password<input name="password" type="password" minLength={8} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required /></label>}
-                        <button className="primary" disabled={busy}>{busy ? 'Connecting…' : ({ signin: 'Sign in', signup: 'Create account', reset: 'Send reset link', password: 'Save password' })[mode]}</button>
+                        <FormActions><button className="primary" aria-busy={busy} disabled={busy}>{busy ? 'Connecting…' : ({ signin: 'Sign in', signup: 'Create account', reset: 'Send reset link', password: 'Save password' })[mode]}</button></FormActions>
                     </form>
                     {message && <p role="status" className="feedback">{message}</p>}
                     <div className="button-row">{mode !== 'signin' && <button className="text-button" onClick={() => setMode('signin')}>Back to sign in</button>}{mode === 'signin' && <><button className="text-button" onClick={() => setMode('signup')}>Create an account</button><button className="text-button" onClick={() => setMode('reset')}>Forgot password?</button></>}</div>

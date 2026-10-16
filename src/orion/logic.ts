@@ -43,9 +43,30 @@ export function todoOrder(a: Quest, b: Quest) {
         (a.due_at || '9999').localeCompare(b.due_at || '9999') ||
         (b.planned_on || '').localeCompare(a.planned_on || '') || a.starts_at.localeCompare(b.starts_at);
 }
-export function deadlineInput(instant: string | null, timezone: string) {
-    if (!instant) return '';
-    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(instant));
+export function dateTimeInput(instant: string, timezone: string) {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(instant));
     const part = (type: string) => parts.find(p => p.type === type)?.value ?? '';
-    return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
+    return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}:${part('second')}`;
+}
+
+// Resolve wall-clock input in the profile zone, independent of the device zone.
+// A repeated DST hour uses its earlier occurrence; nonexistent local times are rejected.
+export function dateTimeInstant(value: string, timezone: string): string | null {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value)) return null;
+    const local = value.length === 16 ? `${value}:00` : value;
+    const naive = Date.parse(`${local}Z`);
+    if (!Number.isFinite(naive) || new Date(naive).toISOString().slice(0, 19) !== local) return null;
+    try {
+        const offsets = new Set([-36, -12, 0, 12, 36].map(hours => {
+            const probe = naive + hours * 3600000;
+            return Date.parse(`${dateTimeInput(new Date(probe).toISOString(), timezone)}Z`) - probe;
+        }));
+        const matches = [...offsets].map(offset => new Date(naive - offset).toISOString())
+            .filter(instant => dateTimeInput(instant, timezone) === local).sort();
+        return matches[0] ?? null;
+    } catch { return null; }
+}
+
+export function deadlineInput(instant: string | null, timezone: string) {
+    return instant ? dateTimeInput(instant, timezone).slice(0, 16) : '';
 }

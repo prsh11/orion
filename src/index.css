@@ -2,6 +2,14 @@
 :root {
     font-family:'Barlow','Segoe UI',sans-serif;
     color-scheme:dark;
+    --strength:#f2a48e;
+    --endurance:#70c7f0;
+    --vitality:#8bddb9;
+    --intellect:#baa4ef;
+    --discipline:#efc185;
+    --connection:#e6a9d5;
+    --cyan-wash:#8de3ec14;
+    --cosmic-haze:#6559a826;
     --bg:#090e1a;
     --surface:#121a2a;
     --surface-raised:#1b283b;
@@ -28,6 +36,14 @@
 
 :root[data-theme='light'] {
     color-scheme:light;
+    --strength:#a6472e;
+    --endurance:#14618d;
+    --vitality:#247152;
+    --intellect:#7041ad;
+    --discipline:#855000;
+    --connection:#95467e;
+    --cyan-wash:#086a8010;
+    --cosmic-haze:#8364b718;
     --bg:#eff3f9;
     --surface:#fff;
     --surface-raised:#e6edf7;

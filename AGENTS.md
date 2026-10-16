@@ -48,7 +48,7 @@ the multi-connection concurrency test. Never point tests at production.
 - **Client**: `src/orion/client.ts` uses the official Supabase client for authenticated RPCs. Never put service-role credentials in the browser.
 - **Calculations**: `src/orion/logic.ts` contains display arithmetic, units, pace, and analytics. PostgreSQL decides actual awards and outcomes.
 - **Legacy compatibility**: `src/save.ts`, `src/gameData.ts`, and `src/types.ts` validate old browser saves and restore their template functions for import only. Preserve the `fitquest-save-v1` key until and after import; never replay historical rewards.
-- **Audio**: `src/audio.ts` — Web Audio API synthesized SFX (no audio files). All sounds are oscillator/noise-based. Respects browser autoplay policy (fails silently until user interaction).
+- **Audio and rewards**: `src/audio.ts` synthesizes Web Audio SFX with a shared volume bus and cancellable voices (no audio files). `src/orion/feedback.ts` derives typed presentations from confirmed snapshots; the provider owns their queue, and `RewardExperience.tsx` coordinates visuals/audio. Initial loads and retries never replay rewards; background refreshes use silent recaps. Respect opt-in, reduced motion, and account boundaries.
 - **Components**: `src/orion/` — account, tracking, quests, character, and settings screens. Functional components with hooks only.
 - **Styling**: Plain CSS with CSS custom properties in `src/index.css` (theme variables) and `src/App.css` (component styles). No CSS framework, no CSS modules, no Tailwind.
 

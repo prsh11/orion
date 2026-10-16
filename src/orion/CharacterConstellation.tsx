@@ -1,3 +1,4 @@
+import GameIcon from './GameIcon';
 import { useOrion } from './context';
 import { ATTRIBUTES } from './types';
 import { levelFor, rankFor, threshold } from './logic';
@@ -5,7 +6,7 @@ import { levelFor, rankFor, threshold } from './logic';
 const point = (angle: number, radius: number) => ({ x: 220 + Math.cos(angle) * radius, y: 194 + Math.sin(angle) * radius });
 
 export default function CharacterConstellation() {
-    const { data } = useOrion();
+    const { data, presentations } = useOrion();
     if (!data) return null;
     const { profile } = data;
     const level = levelFor(profile.xp);
@@ -25,14 +26,14 @@ export default function CharacterConstellation() {
             <polygon className="constellation-shape" points={nodes.map(n => `${n.x},${n.y}`).join(' ')} />
             {nodes.map(n => {
                 const label = point(n.angle, 183);
-                return <g key={n.attribute}><circle className="constellation-node-halo" cx={n.x} cy={n.y} r="8" /><circle className="constellation-node" cx={n.x} cy={n.y} r="3" /><text className="constellation-label" x={label.x} y={label.y - 5} textAnchor="middle">{n.attribute}</text><text className="constellation-value" x={label.x} y={label.y + 16} textAnchor="middle">{n.value}</text></g>;
+                return <g key={`${n.attribute}:${n.value}`} className={(presentations[0]?.attributes[n.attribute] ?? 0) > 0 ? 'constellation-changed' : (presentations[0]?.attributes[n.attribute] ?? 0) < 0 ? 'constellation-lost' : ''}><circle className="constellation-node-halo" cx={n.x} cy={n.y} r="8" /><circle className="constellation-node" cx={n.x} cy={n.y} r="3" /><text className="constellation-label" x={label.x} y={label.y - 5} textAnchor="middle">{n.attribute}</text><text className="constellation-value" x={label.x} y={label.y + 16} textAnchor="middle">{n.value}</text></g>;
             })}
-            <circle className="constellation-core" cx="220" cy="194" r="54" />
+            <path className="constellation-sigil" d="m220 126 59 34v68l-59 34-59-34v-68Z" /><circle className="constellation-core" cx="220" cy="194" r="54" />
             <text className="constellation-rank-caption" x="220" y="170" textAnchor="middle">Rank</text>
             <text className="constellation-rank" x="220" y="211" textAnchor="middle">{rankFor(level)}</text>
             <text className="constellation-level" x="220" y="233" textAnchor="middle">Level {level}</text>
         </svg>
-        <dl className="constellation-mobile-stats">{nodes.map(n => <div key={n.attribute}><dt>{n.attribute}</dt><dd>{n.value}</dd></div>)}</dl>
+        <dl className="constellation-mobile-stats">{nodes.map(n => <div key={n.attribute}><dt><GameIcon name={n.attribute} />{n.attribute}</dt><dd>{n.value}</dd></div>)}</dl>
         <figcaption><span>Your character, taking shape</span><strong>{threshold(level + 1) - profile.xp} XP to level {level + 1}</strong></figcaption>
     </figure>;
 }

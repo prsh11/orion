@@ -287,3 +287,159 @@ footer { display: flex; justify-content: space-between; padding: 24px 42px; colo
  .todo-add .grow { flex-basis:100%; }
  .todo-editor { margin-left:0; }
 }
+
+/* Cosmic RPG: the HUD and earned rewards carry the ornament, forms stay quiet. */
+.game-icon { width:1.4em; height:1.4em; flex-shrink:0; vertical-align:middle; }
+.game-icon[data-icon='Strength'] { color:var(--strength); }
+.game-icon[data-icon='Endurance'] { color:var(--endurance); }
+.game-icon[data-icon='Vitality'] { color:var(--vitality); }
+.game-icon[data-icon='Intellect'] { color:var(--intellect); }
+.game-icon[data-icon='Discipline'] { color:var(--discipline); }
+.game-icon[data-icon='Connection'] { color:var(--connection); }
+button > .game-icon { margin-right:.5em; }
+h2 > .game-icon, h3 > .game-icon { margin-right:.45em; width:1em; height:1em; }
+.attribute-tag { display:inline-flex; align-items:center; gap:.4rem; }
+.app { background:radial-gradient(ellipse at 82% 12%, var(--cosmic-haze), transparent 50%); }
+.app::before { content:''; position:fixed; inset:0; pointer-events:none; opacity:.4; background-image:radial-gradient(circle, var(--muted) .6px, transparent 1px), radial-gradient(circle, var(--muted) .5px, transparent 1px); background-size:137px 149px, 227px 211px; background-position:38px 47px, 109px 83px; }
+.workspace { position:relative; }
+.sidebar { border-right:1px solid color-mix(in srgb, var(--cyan) 18%, transparent); }
+.sidebar nav button { border:1px solid transparent; border-radius:7px; }
+.sidebar nav button[aria-current='page'] { border-color:color-mix(in srgb, var(--cyan) 30%, transparent); box-shadow:inset 3px 0 var(--cyan); background:linear-gradient(95deg, var(--cyan-wash), transparent); }
+.sidebar nav button[aria-current='page']::after { border-radius:0; transform:rotate(45deg); width:6px; height:6px; }
+.sidebar nav button:active { transform:translateY(1px); }
+.topbar { border-bottom:1px solid var(--line); margin-inline:32px; padding:18px 0; }
+.game-hud { display:grid; grid-template-columns:64px minmax(100px, .65fr) minmax(130px, 1.6fr) auto; gap:16px; align-items:center; margin:18px 42px 0; padding:14px 22px; border:1px solid color-mix(in srgb, var(--cyan) 25%, var(--line)); background:linear-gradient(110deg, var(--surface), var(--surface-raised)); border-radius:4px 22px 4px 22px; box-shadow:inset 0 1px 0 var(--cyan-wash); position:relative; }
+.rank-badge { width:80px; height:86px; flex-shrink:0; color:var(--cyan); overflow:visible; filter:drop-shadow(0 0 10px var(--cyan-wash)); }
+.rank-shell { fill:var(--surface); stroke:currentColor; stroke-width:1.8; }
+.rank-inner { fill:var(--cyan-wash); stroke:currentColor; stroke-width:.6; }
+.rank-wings { fill:none; stroke:currentColor; stroke-width:1.5; }
+.rank-star { fill:currentColor; }
+.rank-badge text { fill:currentColor; font-family:'Barlow Condensed',sans-serif; font-size:48px; font-weight:600; }
+.rank-badge[data-rank='D'] { color:var(--endurance); }
+.rank-badge[data-rank='C'] { color:var(--vitality); }
+.rank-badge[data-rank='B'] { color:var(--violet); }
+.rank-badge[data-rank='A'], .rank-badge[data-rank='S'] { color:var(--amber); }
+.game-hud .rank-badge { width:58px; height:64px; }
+.hud-identity { display:flex; flex-direction:column; min-width:0; gap:3px; }
+.hud-identity > span { font-size:.78rem; color:var(--muted); overflow-wrap:anywhere; }
+.hud-identity strong { font-family:'Barlow Condensed',sans-serif; font-size:1.75rem; font-weight:600; }
+.hud-identity small { font-size:.65rem; color:var(--muted); }
+.hud-energy { min-width:0; }
+.hud-energy-label { display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; font-size:.72rem; margin-bottom:9px; color:var(--muted); }
+.hud-energy-label .game-icon { color:var(--cyan); margin-right:.35rem; }
+.hud-track { height:10px; padding:2px; background:var(--bg); border:1px solid var(--line); border-radius:2px; overflow:hidden; }
+.hud-track > span { display:block; height:100%; background:linear-gradient(90deg, var(--endurance), var(--cyan)); box-shadow:0 0 12px var(--cyan); transition:width .8s cubic-bezier(.2,.8,.2,1); position:relative; }
+.hud-gain .hud-track > span::after { content:''; position:absolute; right:0; width:30px; inset-block:-3px; background:var(--text); filter:blur(3px); animation:energy-arrive 1.5s ease-out both; }
+.hud-audio { padding:8px; background:none; font-size:.65rem; display:flex; flex-direction:column; align-items:center; gap:6px; border-color:var(--line); }
+.hud-audio > .game-icon { margin:0; font-size:1.05rem; }
+.dashboard-intro { position:relative; min-height:420px; }
+.hero-copy h1 { text-shadow:0 0 45px var(--cyan-wash); }
+.character-constellation { position:relative; border:1px solid var(--line); border-radius:50% 50% 22px 22px; background:radial-gradient(ellipse at 50% 45%, var(--cyan-wash), transparent 65%); padding:12px; }
+.constellation-sigil { fill:var(--surface); stroke:var(--cyan); stroke-width:1; opacity:.8; }
+.constellation-core { fill:var(--surface); }
+.constellation-xp { filter:drop-shadow(0 0 4px var(--cyan)); transition:stroke-dasharray .8s; }
+.constellation-changed .constellation-node-halo { animation:node-charge 1.5s ease-out; }
+.constellation-changed .constellation-value { fill:var(--cyan); }
+.attribute-changed { animation:attribute-charge 1.5s ease-out; }
+.character-panel .attribute-symbol { width:30px; height:30px; }
+.character-panel .rank-badge { width:90px; height:96px; }
+.panel-crest { position:absolute; width:74px; height:74px; right:18px; top:50px; color:var(--violet); opacity:.12; pointer-events:none; }
+.next-quest { position:relative; }
+.quest-card { position:relative; border:1px solid color-mix(in srgb, var(--violet) 32%, transparent); border-radius:4px 20px 4px 20px; background:linear-gradient(125deg, var(--quest-surface), var(--surface)); box-shadow:inset 3px 0 var(--violet); }
+.quest-card h3 > .game-icon { color:var(--violet); }
+.quest-card.complete { opacity:1; border-color:var(--line); box-shadow:inset 3px 0 var(--vitality); }
+.quest-card.complete h3 > .game-icon { color:var(--vitality); }
+.boss-panel { border:1px solid var(--boss-border); border-radius:8px; background:radial-gradient(ellipse at 95% 0, var(--boss-surface), transparent 70%), var(--surface); }
+.boss-panel > h2 { display:flex; align-items:center; gap:.5rem; }
+.boss-panel > h2 > .game-icon { width:40px; height:40px; }
+.boss-crest { width:72px; height:72px; color:var(--amber); margin:0 0 12px; filter:drop-shadow(0 0 12px var(--boss-surface)); }
+.boss-alert { border:1px solid var(--boss-border); border-left:3px solid var(--amber); padding:16px; border-radius:4px; }
+.completion-check .game-icon { width:16px; height:16px; }
+.recovery-symbol .game-icon { width:26px; height:26px; }
+.recovery-check .game-icon { width:17px; height:17px; }
+.recovery-grid button.is-complete { border-color:color-mix(in srgb, var(--cyan) 45%, transparent); background:linear-gradient(110deg, var(--cyan-wash), var(--surface)); }
+.todo-check:checked { box-shadow:0 0 12px var(--cyan-wash); }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.reward-popup { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); width:min(490px, calc(100vw - 32px)); z-index:30; background:var(--surface); border:1px solid var(--cyan); border-radius:5px 24px 5px 24px; padding:22px 36px 22px 20px; box-shadow:0 16px 80px #0005, 0 0 40px var(--cyan-wash); animation:reward-arrive .35s ease-out; }
+.reward-popup-body { display:flex; align-items:center; gap:16px; }
+.reward-popup h2 { font-family:inherit; font-size:1rem; margin:0 0 6px; }
+.reward-popup .reward-emblem { width:65px; height:65px; flex-shrink:0; }
+.reward-popup .reward-emblem > .game-icon { width:38px; height:38px; }
+.reward-popup small { display:block; font-size:.68rem; color:var(--muted); margin-top:6px; max-height:4em; overflow:auto; }
+.reward-popup .reward-xp { font-size:2.25rem; }
+.reward-confirmed { margin:.5rem 0 0; font-size:.68rem; color:var(--muted); }
+.reward-dismiss { position:absolute; right:5px; top:5px; border:0; background:none; padding:5px 9px; font-size:1.2rem; }
+.reward-recap, .reward-correction { border-color:var(--line); box-shadow:0 12px 36px #0003; }
+.reward-correction .reward-emblem { color:var(--amber); }
+.reward-xp { font-family:'Barlow Condensed',sans-serif; font-size:4rem; font-weight:600; line-height:1.05; color:var(--cyan); }
+.reward-xp > span { font-family:inherit; font-size:.45em; font-weight:500; }
+.reward-attributes { display:flex; gap:8px; flex-wrap:wrap; margin-top:9px; }
+.reward-attributes > span { display:inline-flex; align-items:center; gap:4px; font-size:.8rem; padding:5px 8px; background:var(--cyan-wash); border-radius:4px; }
+.is-loss { color:var(--danger); }
+.reward-emblem { position:relative; width:160px; height:160px; margin:0 auto; display:grid; place-items:center; color:var(--cyan); border:1px solid var(--line); border-radius:50%; background:radial-gradient(circle, var(--cyan-wash), transparent 70%); }
+.reward-emblem::after { content:''; position:absolute; inset:8px; border:1px dashed currentColor; opacity:.25; border-radius:50%; }
+.reward-emblem > .game-icon { width:90px; height:90px; }
+.reward-emblem .rank-badge { width:120px; height:128px; z-index:1; }
+.reward-particles { position:absolute; inset:50%; pointer-events:none; }
+.reward-particles i { position:absolute; width:4px; height:4px; background:var(--cyan); box-shadow:0 0 7px var(--cyan); animation:particle-flight .95s ease-out var(--delay) both; transform:rotate(var(--angle)); }
+.milestone-dialog { width:min(540px, calc(100vw - 32px)); max-height:calc(100dvh - 40px); overflow:auto; padding:0; border:1px solid var(--cyan); border-radius:8px 36px 8px 36px; color:var(--text); background:radial-gradient(ellipse at 50% 0, var(--cosmic-haze), transparent 65%), var(--surface); box-shadow:0 0 100px var(--cyan-wash), 0 30px 100px #0008; }
+.milestone-dialog::backdrop { background:#030917ce; backdrop-filter:blur(7px); }
+.milestone-content { padding:36px; text-align:center; animation:milestone-arrive .5s cubic-bezier(.15,.75,.2,1) both; }
+.reward-caption { color:var(--muted); font-size:.75rem; margin:23px 0 9px; }
+.milestone-dialog h2 { font-size:clamp(2.5rem, 7vw, 3.5rem); margin-bottom:18px; }
+.milestone-dialog .reward-attributes { justify-content:center; }
+.milestone-list { padding:0; list-style:none; margin:22px 0; text-align:left; max-height:160px; overflow:auto; }
+.milestone-list li { display:flex; align-items:center; gap:10px; padding:8px 0; font-size:.85rem; border-top:1px solid var(--line); }
+.milestone-list li .game-icon { color:var(--cyan); }
+.milestone-continue { width:100%; padding:14px; font-size:1rem; }
+@keyframes particle-flight { from { opacity:0; transform:rotate(var(--angle)) translateX(18px) scale(.3); } 20% { opacity:1; } to { opacity:0; transform:rotate(var(--angle)) translateX(var(--travel)) scale(.7); } }
+@keyframes reward-arrive { from { opacity:0; transform:translate(-50%, 18px); } to { opacity:1; transform:translate(-50%, 0); } }
+@keyframes milestone-arrive { from { opacity:0; transform:scale(.94) translateY(12px); } to { opacity:1; transform:scale(1) translateY(0); } }
+@keyframes energy-arrive { from { opacity:1; } to { opacity:0; } }
+@keyframes node-charge { 0% { r:8; opacity:1; } 70% { r:25; opacity:.1; } 100% { r:8; } }
+@keyframes attribute-charge { from { background:var(--cyan-wash); box-shadow:0 0 20px var(--cyan-wash); } to { background:transparent; box-shadow:none; } }
+[data-effects='reduced'] .reward-particles, [data-effects='off'] .reward-particles { display:none; }
+[data-effects='reduced'] *, [data-effects='reduced'] *::before, [data-effects='reduced'] *::after,
+[data-effects='off'] *, [data-effects='off'] *::before, [data-effects='off'] *::after { animation:none!important; transition:none!important; }
+[data-effects='reduced'] .constellation-changed .constellation-node-halo { opacity:.8; fill:var(--cyan); }
+[data-effects='off'].reward-popup { box-shadow:none; border-radius:8px; }
+@media (max-width:1100px) { .game-hud { margin-inline:28px; } .topbar { margin-inline:28px; } }
+@media (max-width:760px) {
+ .sidebar nav svg { display:inline-block; width:17px; height:17px; flex-basis:17px; }
+ .sidebar nav button { gap:8px; border-radius:6px; padding:10px; }
+ .topbar { margin-inline:24px; padding-inline:0; }
+ .game-hud { margin-inline:24px; padding:12px; gap:10px; grid-template-columns:48px 1fr 1.2fr 36px; }
+ .game-hud .rank-badge { width:44px; height:50px; }
+ .hud-audio span { display:none; }
+ .hud-audio { border:0; padding:6px; }
+}
+@media (max-width:540px) {
+ .game-hud { grid-template-columns:45px 1fr 36px; }
+ .hud-energy { grid-column:1/-1; grid-row:2; }
+ .hud-identity { flex-direction:row; align-items:baseline; flex-wrap:wrap; column-gap:10px; }
+ .hud-identity strong { font-size:1.6rem; }
+ .hud-identity small { flex-basis:100%; }
+ .dashboard-intro { min-height:0; }
+ .character-constellation { border-radius:50% 50% 16px 16px; }
+ .reward-popup { bottom:16px; padding:17px 30px 17px 14px; }
+ .reward-popup .reward-emblem { width:42px; height:42px; }
+ .reward-popup .reward-emblem > .game-icon { width:25px; height:25px; }
+ .milestone-content { padding:26px 20px; }
+ .milestone-dialog .reward-emblem { width:125px; height:125px; }
+ .milestone-dialog .reward-emblem .rank-badge { width:95px; height:102px; }
+}
+@media (max-width:360px) { .game-hud { margin-inline:18px; } .topbar { margin-inline:18px; } }
+
+.milestone-sound { position:absolute; top:12px; right:12px; background:none; border:0; padding:8px; }
+.milestone-sound > .game-icon { margin:0; }
+
+.quest-just-completed { animation:objective-flare 1s ease-out; }
+@keyframes objective-flare { from { box-shadow:inset 3px 0 var(--cyan), 0 0 35px var(--cyan-wash); border-color:var(--cyan); } to { box-shadow:inset 3px 0 var(--vitality); } }
+.constellation-mobile-stats .game-icon { display:block; margin:0 auto 5px; width:20px; height:20px; }
+
+.milestone-sound { color:var(--muted); }
+.attribute-lost { border-left:2px solid var(--danger); padding-left:8px; }
+.constellation-lost .constellation-node-halo { fill:var(--danger); opacity:.5; }
+.constellation-lost .constellation-value { fill:var(--danger); }
+
+[data-effects='reduced'], [data-effects='off'] { animation:none!important; transition:none!important; }

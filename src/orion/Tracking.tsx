@@ -3,6 +3,8 @@ import { useOrion } from './context';
 import { bestWeight, dayKey, fromKg, fromMetres, pace, volume } from './logic';
 import ActivityForm from './ActivityForm';
 import type { Activity } from './types';
+import GameIcon from './GameIcon';
+import type { IconName } from './GameIcon';
 
 export function ActivityHistory({ journal = false }: { journal?: boolean }) {
     const { data, command, busy } = useOrion();
@@ -15,7 +17,7 @@ export function ActivityHistory({ journal = false }: { journal?: boolean }) {
         {!rows.length && <p className="empty">{journal ? 'A book, a conversation, a moment of focus. Your first entry starts here.' : 'Your first session is a starting point. Log it above.'}</p>}
         <div className="history">{rows.map(a => {
             const sets = data.sets.filter(s => s.activity_id === a.id).sort((x, y) => x.ordinal - y.ordinal);
-            return <article className="history-entry" key={a.id}><div className="entry-heading"><div><time>{new Date(a.occurred_at).toLocaleString(undefined, { timeZone: data.profile.timezone, dateStyle: 'medium', timeStyle: 'short' })}</time><h3>{a.title}</h3></div><span className="attribute-tag">{a.attribute}</span></div>
+            return <article className="history-entry" key={a.id}><div className="entry-heading"><div><time>{new Date(a.occurred_at).toLocaleString(undefined, { timeZone: data.profile.timezone, dateStyle: 'medium', timeStyle: 'short' })}</time><h3>{a.title}</h3></div><span className="attribute-tag"><GameIcon name={a.attribute} />{a.attribute}</span></div>
                 <p>{a.minutes > 0 ? `${a.minutes} min` : 'Daily completion'}{a.metres > 0 && ` · ${fromMetres(a.metres, imperial).toFixed(2)} ${imperial ? 'mi' : 'km'} · ${pace(a.minutes, a.metres, imperial)}`}{sets.length > 0 && ` · ${fromKg(volume(sets, data.exercises), imperial).toFixed(1)} ${imperial ? 'lb' : 'kg'} volume`}</p>
                 {a.notes && <p className="entry-notes">{a.notes}</p>}
                 {sets.length > 0 && <details><summary>{sets.length} completed sets</summary><ul>{sets.map(s => <li key={s.id}>{data.exercises.find(e => e.id === s.exercise_id)?.name}: {s.reps} reps × {fromKg(s.kg, imperial).toFixed(1)} {imperial ? 'lb' : 'kg'}</li>)}</ul></details>}
@@ -48,10 +50,10 @@ export function DailyCare() {
         <div className="care-columns">
             <div className="habit-section"><div className="subsection-heading"><h3>Your habits</h3><span>+5 XP / +1 Discipline</span></div>
                 {!data.habits.some(h => !h.archived) && <p className="muted">Add one small action you want to repeat.</p>}
-                {data.habits.filter(h => !h.archived).map(h => <div className={`daily-row ${done('habit:' + h.id) ? 'is-complete' : ''}`} key={h.id}><button className="habit-complete" aria-pressed={done('habit:' + h.id)} disabled={busy} onClick={() => { void command('complete_habit', { id: h.id, completed: !done('habit:' + h.id) }); }}><span className="completion-check" aria-hidden="true">{done('habit:' + h.id) ? '✓' : '+'}</span>{h.name}</button><button className="text-button" onClick={() => { void command('archive_habit', { id: h.id }); }} disabled={busy} aria-label={`Archive ${h.name}`}>Archive</button></div>)}
+                {data.habits.filter(h => !h.archived).map(h => <div className={`daily-row ${done('habit:' + h.id) ? 'is-complete' : ''}`} key={h.id}><button className="habit-complete" aria-pressed={done('habit:' + h.id)} disabled={busy} onClick={() => { void command('complete_habit', { id: h.id, completed: !done('habit:' + h.id) }); }}><span className="completion-check" aria-hidden="true"><GameIcon name={done('habit:' + h.id) ? 'check' : 'Discipline'} /></span>{h.name}</button><button className="text-button" onClick={() => { void command('archive_habit', { id: h.id }); }} disabled={busy} aria-label={`Archive ${h.name}`}>Archive</button></div>)}
                 <form className="button-row habit-form" onSubmit={e => { e.preventDefault(); const form = e.currentTarget; const f = new FormData(form); void command('habit', { name: f.get('name') }).then(ok => { if (ok) form.reset(); }); }}><label className="grow">New habit<input name="name" required maxLength={100} placeholder="Read before bed" /></label><button disabled={busy}>Add habit</button></form>
             </div>
-            <div className="recovery-section"><div className="subsection-heading"><h3>Recovery targets</h3><span>+10 XP / +1 Vitality</span></div><div className="recovery-grid">{['Water: 2 litres', 'Sleep: 8 hours', 'Mindfulness: 10 minutes', 'Balanced meals: 3'].map((target, i) => <button className={done('recovery:' + target) ? 'is-complete' : ''} key={target} aria-pressed={done('recovery:' + target)} disabled={busy} onClick={() => { void command('recovery', { target, completed: !done('recovery:' + target) }); }}><span className="recovery-symbol" aria-hidden="true">{['◒', '☾', '✧', '♧'][i]}</span><span>{target}</span><span className="recovery-check" aria-hidden="true">{done('recovery:' + target) ? '✓' : '+'}</span></button>)}</div><p className="muted small">Click again to uncheck and reverse its base reward. Checking it again restores that reward.</p></div>
+            <div className="recovery-section"><div className="subsection-heading"><h3>Recovery targets</h3><span>+10 XP / +1 Vitality</span></div><div className="recovery-grid">{['Water: 2 litres', 'Sleep: 8 hours', 'Mindfulness: 10 minutes', 'Balanced meals: 3'].map((target, i) => <button className={done('recovery:' + target) ? 'is-complete' : ''} key={target} aria-pressed={done('recovery:' + target)} disabled={busy} onClick={() => { void command('recovery', { target, completed: !done('recovery:' + target) }); }}><span className="recovery-symbol" aria-hidden="true"><GameIcon name={(['water', 'sleep', 'focus', 'meal'] as IconName[])[i]!} /></span><span>{target}</span><span className="recovery-check" aria-hidden="true"><GameIcon name={done('recovery:' + target) ? 'check' : 'orbit'} /></span></button>)}</div><p className="muted small">Click again to uncheck and reverse its base reward. Checking it again restores that reward.</p></div>
         </div>
     </section>;
 }

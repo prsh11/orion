@@ -9,7 +9,7 @@ function fixture(): Snapshot {
         profile: { id: uid, display_name: 'Ari', timezone: 'UTC', units: 'metric', onboarded: true, xp: 360, imported: false, domains: ['Strength', 'Intellect'], attributes: { Strength: 15, Endurance: 12, Vitality: 11, Intellect: 16, Discipline: 13, Connection: 10 } },
         activities: [{ id: 'a', kind: 'running', title: 'Morning run', minutes: 30, metres: 5000, notes: 'A calm start', attribute: 'Endurance', occurred_at: now, recorded_at: now, daily_key: null, base_xp: 30, base_points: 1 }],
         sets: [], exercises: [{ id: 'e', name: 'Incline dumbbell press', bodyweight: false, dumbbell: true }], habits: [{ id: 'h', name: 'Read before bed', archived: false }],
-        definitions: [], quests: [{ id: 'q', definition_id: 'd', title: 'A chapter a day', attribute: 'Intellect', period: 'daily', target: 20, progress: 10, metric: 'minutes', starts_at: '2020-01-01T00:00:00Z', ends_at: '2099-01-01T00:00:00Z', completed_at: null, archived: false }],
+        definitions: [], quests: [{ id: 'q', definition_id: 'd', difficulty: 'medium', due_at: null, reward_xp: 25, reward_points: 1, penalty_xp: 0, penalty_points: 0, title: 'A chapter a day', attribute: 'Intellect', period: 'daily', target: 20, progress: 10, metric: 'minutes', starts_at: '2020-01-01T00:00:00Z', ends_at: '2099-01-01T00:00:00Z', completed_at: null, archived: false }],
         bosses: [], templates: [{ id: 'first-gate', title: 'The first gate', hours: 24, attributes: ['Strength', 'Discipline'], objectives: [{ metric: 'workouts', target: 1 }, { metric: 'minutes', target: 60 }] }], events: [], server_time: now,
     };
 }
@@ -239,4 +239,58 @@ test('activity, habit, both quests, boss and level-up all play sequentially; mut
     await page.getByLabel('Play reward sounds').uncheck();
     await page.clock.fastForward(10000);
     expect(await notes()).toBe(40);
+});
+
+test('new tasks preview rewards, submit timezone-local deadlines, and show overdue completion history', async ({ page }) => {
+    const state = fixture();
+    state.quests.push({ ...state.quests[0]!, id: 'overdue', title: 'Overdue task', period: 'one-off', metric: 'manual', target: 1, progress: 0, ends_at: null, due_at: '2020-01-01T00:00:00Z' });
+    state.quests.push({ ...state.quests[0]!, id: 'undated', title: 'Undated task', period: 'one-off', metric: 'manual', target: 3, progress: 0, ends_at: null });
+    await mock(page, state);
+    let submitted: Record<string, unknown> | undefined;
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const body = route.request().postDataJSON(); submitted = body.payload;
+        if (body.action === 'quest_progress') {
+            const q = state.quests.find(q => q.id === body.payload.id)!;
+            q.completed_at = new Date().toISOString(); q.progress = 1; q.penalty_xp = 7; q.penalty_points = 1;
+            state.profile.xp += 18;
+            state.events.push({ id: 'reward', source: 'quest:' + q.id, xp: 25, attributes: { Intellect: 1 }, created_at: q.completed_at });
+            state.events.push({ id: 'penalty', source: 'quest-late:' + q.id, xp: -7, attributes: { Intellect: -1 }, created_at: q.completed_at });
+        }
+        await route.fulfill({ json: { saved: true } });
+    });
+    await page.goto('/');
+    await expect(page.locator('.quest-card')).toContainText('Overdue task');
+    await page.getByRole('navigation').getByRole('button', { name: 'Quests', exact: true }).click();
+    const form = page.locator('section').filter({ has: page.getByRole('heading', { name: 'New task', exact: true }) });
+    await expect(form.getByLabel('Period')).toHaveValue('one-off');
+    await expect(form.getByLabel('Difficulty')).toHaveValue('medium');
+    await expect(form.getByLabel('Progress from')).toHaveValue('manual');
+    await expect(form.getByLabel('Target', { exact: true })).toHaveValue('1');
+    await expect(form.getByLabel('Attribute', { exact: true })).toHaveValue('');
+    await expect(form).toContainText('Net late reward: 18 XP + 0 attribute');
+    await form.getByLabel('Title', { exact: true }).fill('My new task');
+    await form.getByLabel('Attribute', { exact: true }).selectOption('Connection');
+    await form.getByLabel('Optional deadline (UTC)').fill('2099-01-01T12:00');
+    await form.getByRole('button', { name: 'Create task' }).click();
+    await expect(form.getByRole('button', { name: 'Create task' })).toBeEnabled();
+    expect(submitted).toMatchObject({ title: 'My new task', period: 'one-off', difficulty: 'medium', metric: 'manual', target: 1, attribute: 'Connection', due_local: '2099-01-01T12:00' });
+    await page.getByRole('button', { name: 'Dismiss notification' }).click();
+    await form.getByLabel('Period').selectOption('monthly'); await form.getByLabel('Difficulty').selectOption('hard');
+    await expect(form).toContainText('Reward: 600 XP + 16 points');
+    for (const theme of ['light', 'dark']) {
+        await page.evaluate(t => document.documentElement.dataset.theme = t, theme);
+        for (const width of [320, 1440]) {
+            await page.setViewportSize({ width, height: 1000 });
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+            await expect(page.locator('.quest-card').filter({ hasText: 'Undated task' })).toContainText('No deadline');
+            await page.screenshot({ path: `/tmp/orion-tasks-${theme}-${width}.png`, fullPage: true });
+        }
+    }
+    const overdue = page.locator('.quest-card').filter({ hasText: 'Overdue task' });
+    await expect(overdue).toContainText('Overdue');
+    await expect(overdue.getByLabel('Add progress')).toHaveCount(0);
+    await overdue.getByRole('button', { name: 'Complete task' }).click();
+    await expect(page.getByText('+18 XP confirmed', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Quest history' }).click();
+    await expect(page.locator('.quest-card').filter({ hasText: 'Overdue task' })).toContainText('Net: +18 XP / +0 Intellect');
 });

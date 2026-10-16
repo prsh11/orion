@@ -86,7 +86,24 @@ and [database function](https://supabase.com/docs/guides/database/functions) gui
   grant 10 XP and one Vitality point per target/day.
 - Cumulative XP thresholds are `floor(100 * (level - 1)^1.5)`. Ranks are E at
   levels 1–9, D at 10–24, C at 25–39, B at 40–59, A at 60–79, and S at 80+.
-- Daily/weekly/monthly quests reward 25/100/300 XP and 1/3/8 attribute points.
+- User-defined tasks extend quests with one-off, daily, weekly, and monthly schedules.
+  New tasks default to manual progress, target 1, medium difficulty, and no deadline;
+  choose one attribute. Automatic tasks use the existing activity metrics.
+- Medium daily/weekly/monthly rewards remain 25/100/300 XP and 1/3/8 attribute
+  points. One-off rewards match daily rewards. Easy rewards are 15/50/150 XP and
+  1/2/4 points; hard rewards are 50/200/600 XP and 2/6/16 points.
+- Optional one-off deadlines are entered in the profile timezone and stored as UTC
+  instants, unchanged by later timezone changes. Deadlines must be in the future.
+  Completion at or after the deadline grants the reward, then deducts 25% of its
+  XP (rounded up) and one selected attribute point. A medium late task nets
+  18 XP and zero attribute points. Merely becoming overdue never deducts rewards.
+- Undated one-off tasks stay open; dated tasks stay actionable when overdue.
+  Archiving closes a one-off without rewards. One-off terms are fixed, with title
+  corrections allowed. Recurring edits affect future instances only. Rewards and
+  penalties are stored on instances and included in completion history and exports.
+- Automatic one-off progress requires activity performed and recorded after task
+  creation. Imported activity is excluded. Calendar recurrence uses the profile
+  timezone, Monday-start weeks, and no carryover or missed-period penalties.
   Automatic metrics count activities in the selected attribute. Weeks begin
   Monday, and periods follow the player’s timezone. Instances preserve history
   and fixed boundaries. Edits affect future instances; archiving stops recurrence.
@@ -184,3 +201,14 @@ deployment responsibilities.
 GPS, wearables, multiplayer, inventory, public leaderboards, and offline
 synchronization are outside this release. See [CONTRIBUTING.md](CONTRIBUTING.md)
 and [AGENTS.md](AGENTS.md) for repository conventions.
+
+### User-defined task migration
+
+Apply `supabase/migrations/202610160001_tasks.sql` after the existing migrations
+before deploying this client. It adds task scheduling and frozen reward terms,
+replaces the quest sync and authenticated command functions, and preserves existing
+quest IDs, boundaries, progress, completions, and awards as medium difficulty.
+The snapshot/export functions already serialize complete table rows, so the new
+fields are included automatically. No backfill awards or late penalties are run
+for historical completions. Verify task creation, late completion, and export on
+an isolated migrated database before deploying to a live account.

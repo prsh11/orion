@@ -3,6 +3,7 @@ import type { ReactNode, FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './client';
 import { OrionProvider } from './store';
+import RpgArt from './RpgArt';
 
 export default function Auth({ children }: { children: ReactNode }) {
     const [session, setSession] = useState<Session | null>(null);
@@ -45,7 +46,7 @@ export default function Auth({ children }: { children: ReactNode }) {
         <a className="wordmark" href="/" aria-label="Orion home"><OrionMark />orion<span>Life, leveled.</span></a>
         <div className="auth-layout">
             <section className="auth-intro"><div className="system-rule" /><h1>Your next chapter<br />starts with a quest.</h1><p>Train your body. Make space for your mind. Turn the things you do each day into a character that grows with you.</p>
-                <div className="constellation" aria-hidden="true"><svg viewBox="0 0 400 300"><path d="M78 32 270 60 225 140 190 155 160 170 112 260 322 240 225 140M78 32 160 170" />{[[78,32],[270,60],[225,140],[190,155],[160,170],[112,260],[322,240]].map(([x,y],i)=><circle key={i} cx={x} cy={y} r={i===3?7:4}/>)}</svg></div>
+                <RpgArt scene="dashboard" hero />
                 <p className="muted">Six attributes. Your own pace. Private by default.</p>
             </section>
             <section className="panel auth-panel">
@@ -65,5 +66,5 @@ export default function Auth({ children }: { children: ReactNode }) {
     </main>;
 }
 export function OrionMark() {
-    return <svg className="orion-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="m10 5 22 4-7 13-7 3-6 10 22-3-9-10L10 5Z" stroke="currentColor" strokeWidth="1.2" />{[[10,5],[32,9],[25,22],[18,25],[12,35],[34,32]].map(([x,y],i)=><circle key={i} cx={x} cy={y} r="2" fill="currentColor"/>)}</svg>;
+    return <svg className="orion-mark" viewBox="0 0 32 32" shapeRendering="crispEdges" aria-hidden="true"><path d="M13 1h6v6h4v4h7v10h-7v4h-4v6h-6v-6H9v-4H2V11h7V7h4Z" fill="currentColor" /><path d="M14 7h4v5h5v7h-5v6h-4v-6H9v-7h5Z" fill="var(--sidebar)" /><path d="M14 12h4v7h-4Z" fill="var(--amber)" /></svg>;
 }

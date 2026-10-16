@@ -1,0 +1,33 @@
+{
+  "generator": "Built-in image_gen",
+  "style": "Pixel cosmic RPG, midnight/slate/cyan/violet/amber, no characters or text.",
+  "reference": "dashboard.webp",
+  "assets": [
+    {
+      "file": "dashboard.webp",
+      "prompt": "Use case: stylized-concept. Asset type: pixel cosmic RPG dashboard illustration for Orion, a life-tracking game. Primary request: a celestial observatory on a small floating stone island, six small equipment relics displayed around its base (gauntlet, boots, potion, spellbook, shield, linked charms). Medium: beautiful disciplined 16-bit pixel art, visible square pixel clusters, stepped edges, no smooth vector outlines, no blurry gradients. Composition: landscape 3:2, single cohesive miniature world centered, entire island in frame with breathing room. Scene: quiet midnight star field, crescent planet, violet rocks, cyan telescope lens, warm amber windows. Palette: midnight #090e1a, slate #121a2a, cyan #8de3ec, violet #baa4ef, amber #efc185, pale star highlights. Restrained light and limited palette, ornamental game environment, readable at 450px wide. No people, creatures, player characters, text, letters, labels, watermark, interface, panels, or numbers. Solid midnight background. Save the generated image as an asset, not a UI mockup."
+    },
+    {
+      "file": "quest.webp",
+      "prompt": "Use case: stylized-concept. Create a NEW companion spot illustration using Image 1 only as an art-style reference: same visible 16-bit pixel clusters, celestial violet stone, amber metal, cyan magical light, midnight #090e1a starfield and limited palette. Asset: Orion quest gate. A small ancient stone gateway on a floating rock platform with a cyan star portal, amber quest seal and short stepping-stone path, a few violet crystals. Entire object centered with generous breathing room, landscape 3:2 composition. Much simpler and less dense than the reference because displayed at 200px. No observatory, no six relics, no people or creatures, no text, letters, labels, UI, numbers or watermark. Pixel cosmic RPG environment, no painted blur. Solid midnight background."
+    },
+    {
+      "file": "training.webp",
+      "prompt": "Use case: stylized-concept. NEW companion spot illustration using Image 1 only as style reference. Asset: Orion training forge. Small celestial open forge on a floating violet stone platform, one heavy anvil, amber furnace, a pair of metal gauntlets and training weights, cyan star crystal powering it. Same disciplined visible 16-bit square pixel clusters and stepped contours, midnight #090e1a backdrop, slate #121a2a, cyan #8de3ec, violet #baa4ef, amber #efc185. Entire compact environment centered landscape 3:2 with generous breathing room, readable as a 200px illustration, simpler than reference. No observatory, people, creatures, text, labels, letters, UI, numbers, watermark. No painted blur. Solid midnight background."
+    },
+    {
+      "file": "journal.webp",
+      "prompt": "Use case: stylized-concept. NEW companion spot illustration using Image 1 only as style reference. Asset: Orion journal archive. Small celestial library alcove on a floating violet stone platform, a grand open spellbook on a reading lectern, amber reading lamps and a few book shelves, cyan star crystal. Same disciplined visible 16-bit square pixel clusters and stepped contours, midnight #090e1a backdrop, slate #121a2a, cyan #8de3ec, violet #baa4ef, amber #efc185. Entire compact environment centered landscape 3:2 with generous breathing room, readable as a 200px illustration, simpler than reference. No observatory, people, creatures, readable writing, text, labels, letters, UI, numbers, watermark. Book pages show only abstract pixel dots. No painted blur. Solid midnight background."
+    },
+    {
+      "file": "character.webp",
+      "prompt": "Use case: stylized-concept. NEW companion spot illustration using Image 1 only as style reference. Asset: Orion character relic cabinet. An ornate open display cabinet on a small floating violet stone platform, six equipment relics carefully arranged on shelves: gauntlet, boots, potion, spellbook, shield, linked charms. Amber metal cabinet frame and cyan star medallion above. No person or armor mannequin. Same disciplined visible 16-bit square pixel clusters and stepped contours, midnight #090e1a backdrop, slate #121a2a, cyan #8de3ec, violet #baa4ef, amber #efc185. Entire compact environment centered landscape 3:2 with generous breathing room, readable as a 200px illustration, simpler than reference. No observatory, people, creatures, text, labels, letters, UI, numbers, watermark. No painted blur. Solid midnight background."
+    },
+    {
+      "file": "settings.webp",
+      "prompt": "Use case: stylized-concept. NEW companion spot illustration using Image 1 only as style reference. Asset: Orion settings astrolabe. A beautiful amber brass astrolabe with concentric celestial rings and a cyan star suspended at its heart, on a compact violet stone workbench and floating rock platform, two small mechanical tools and an amber lamp. Same disciplined visible 16-bit square pixel clusters and stepped contours, midnight #090e1a backdrop, slate #121a2a, cyan #8de3ec, violet #baa4ef, amber #efc185. Entire compact environment centered landscape 3:2 with generous breathing room, readable as a 200px illustration, much simpler than reference. No observatory, people, creatures, writing, text, labels, letters, UI, numbers, watermark. No painted blur. Solid midnight background."
+    }
+  ],
+  "background": "Transparent alpha; original generation prompts retained below for provenance.",
+  "latest_edit_prompts": "transparency-prompts.json"
+}

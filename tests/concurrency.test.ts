@@ -9,11 +9,17 @@ test('PostgreSQL: concurrent commands and expiry apply rewards once', { skip: !p
     const pool = new pg.Pool({ connectionString: process.env.ORION_TEST_DATABASE_URL, max: 4 });
     const user = randomUUID();
     const id = randomUUID();
-    const payload = JSON.stringify({ kind: 'reading', title: 'Concurrent read', minutes: 30, occurred_at: new Date(Date.now() - 1000).toISOString() });
+    let payload = '';
     try {
         await pool.query('insert into auth.users(id) values($1)', [user]);
         await pool.query('insert into public.profiles(id) values($1)', [user]);
-        await pool.query(`insert into public.quest_definitions(user_id,title,period,metric,target,attribute) values($1,'Concurrent quest','daily','minutes',30,'Intellect')`, [user]);
+        const setup = await pool.connect();
+        try {
+            await setup.query('begin'); await setup.query("select set_config('request.jwt.claim.sub',$1,true)", [user]); await setup.query('set local role authenticated');
+            await setup.query('select public.orion_command($1,$2,$3::jsonb)', [randomUUID(), 'create_quest', JSON.stringify({ title: 'Concurrent quest', timeline: 'daily', attribute: 'Intellect', objectives: [{ title: 'Read', metric: 'minutes', target: 30 }] })]);
+            await setup.query('commit');
+        } finally { setup.release(); }
+        payload = JSON.stringify({ kind: 'reading', title: 'Concurrent read', minutes: 30, occurred_at: new Date().toISOString() });
         const run = async () => {
             const c = await pool.connect();
             try {
@@ -39,7 +45,7 @@ test('PostgreSQL: concurrent commands and expiry apply rewards once', { skip: !p
     }
 });
 
-test('PostgreSQL: concurrent late task completion awards and penalizes exactly once', { skip: !process.env.ORION_TEST_DATABASE_URL }, async () => {
+test('PostgreSQL: concurrent objective completion and expiry settle exactly once', { skip: !process.env.ORION_TEST_DATABASE_URL }, async () => {
     const pool = new pg.Pool({ connectionString: process.env.ORION_TEST_DATABASE_URL, max: 4 });
     const user = randomUUID();
     const run = async (id: string, action: string, payload: Record<string, unknown>) => {
@@ -55,13 +61,13 @@ test('PostgreSQL: concurrent late task completion awards and penalizes exactly o
     };
     try {
         await pool.query('insert into auth.users(id) values($1)', [user]);
-        await run(randomUUID(), 'quest', { title: 'Concurrent task', period: 'one-off', metric: 'manual', target: 1, attribute: 'Intellect' });
+        await run(randomUUID(), 'create_quest', { title: 'Concurrent achievement', timeline: 'weekly', attribute: 'Intellect', objectives: [{ title: 'Finish', metric: 'checklist', target: 1 }] });
         const quest = (await pool.query('select id from public.quest_instances where user_id=$1', [user])).rows[0];
-        await pool.query("update public.quest_instances set due_at=clock_timestamp()-interval '1 second' where id=$1", [quest.id]);
-        const results = await Promise.allSettled([run(randomUUID(), 'quest_progress', { id: quest.id, count: 1 }), run(randomUUID(), 'quest_progress', { id: quest.id, count: 1 })]);
-        assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
-        assert.equal((await pool.query('select xp from public.profiles where id=$1', [user])).rows[0].xp, 18);
-        assert.equal((await pool.query('select count(*)::int n from public.progression_events where user_id=$1', [user])).rows[0].n, 2);
+        const objective = (await pool.query('select id from public.quest_objectives where quest_id=$1', [quest.id])).rows[0];
+        const results = await Promise.allSettled([run(randomUUID(), 'set_quest_objective', { id: quest.id, objective_id: objective.id, progress: 1 }), run(randomUUID(), 'set_quest_objective', { id: quest.id, objective_id: objective.id, progress: 1 }), pool.query('select public.orion_expire_bosses()')]);
+        assert.equal(results.filter(result => result.status === 'fulfilled').length, 2);
+        assert.equal((await pool.query('select xp from public.profiles where id=$1', [user])).rows[0].xp, 100);
+        assert.equal((await pool.query('select count(*)::int n from public.progression_events where user_id=$1', [user])).rows[0].n, 1);
     } finally { await pool.query('delete from auth.users where id=$1', [user]); await pool.end(); }
 });
 

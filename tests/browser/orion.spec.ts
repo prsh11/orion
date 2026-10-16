@@ -40,7 +40,12 @@ test('all six screens fit mobile through desktop in both themes', async ({ page 
             for (const tab of ['Dashboard', 'Quests', 'Training', 'Journal', 'Character', 'Settings']) {
                 await page.getByRole('navigation').getByRole('button', { name: tab, exact: true }).click();
                 await expect(page.locator('main')).toBeVisible();
+                const artwork = page.locator('.rpg-art img');
+                await expect(artwork).toHaveCount(1);
+                await artwork.scrollIntoViewIfNeeded();
+                await expect.poll(() => artwork.evaluate(img => img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0)).toBe(true);
                 expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+                if (width === 390 || width === 1440) await page.screenshot({ path: `/tmp/orion-rpg-${theme}-${tab.toLowerCase()}-${width}.png`, fullPage: true });
             }
             if (width === 320 || width === 1440) {
                 await page.getByRole('navigation').getByRole('button', { name: 'Dashboard', exact: true }).click();
@@ -448,4 +453,105 @@ test('reduced and off effects remove motion from ordinary popup roots as well as
         if (mode === 'off') await expect(page.locator('.reward-emblem')).toHaveCount(0);
         await page.getByRole('button', { name: 'Dismiss reward' }).click();
     }
+});
+
+function missionFixture(): Snapshot {
+    const state = fixture();
+    state.quests = [{ ...state.quests[0]!, title: 'Build your momentum', period: 'one-off', timeline: 'weekly', status: 'active', description: 'Train with intention and prepare for the next session.', starts_at: '2026-01-01T12:00:00Z', ends_at: '2099-01-08T12:00:00Z', due_at: '2099-01-08T12:00:00Z', reward_xp: 100, reward_points: 3, attribute: 'Strength', target: 3, progress: 1, objectives: [
+        { id: 'o1', ordinal: 1, title: 'Pack your training kit', metric: 'checklist', target: 1, progress: 0, activity_kind: null, attribute: null },
+        { id: 'o2', ordinal: 2, title: 'Complete three workouts', metric: 'workouts', target: 3, progress: 3, activity_kind: null, attribute: null },
+        { id: 'o3', ordinal: 3, title: 'Practice your routine', metric: 'manual', target: 2, progress: 1, activity_kind: null, attribute: null },
+    ] }];
+    return state;
+}
+test('mission journal supports objective updates, completion archive, themes and mobile layouts', async ({ page }) => {
+    const state = missionFixture(); await mock(page, state);
+    const calls: { action: string; payload: Record<string, unknown> }[] = [];
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const { action, payload } = route.request().postDataJSON(); calls.push({ action, payload });
+        const q = state.quests[0]!;
+        if (action === 'set_quest_objective') {
+            q.objectives!.find(o => o.id === payload.objective_id)!.progress = payload.progress;
+            q.progress = q.objectives!.filter(o => o.progress >= o.target).length;
+            if (q.progress === q.target) { q.status = 'completed'; q.completed_at = new Date().toISOString(); state.profile.xp += 100; state.profile.attributes.Strength += 3; state.events.push({ id: 'mission-earned', source: `quest:${q.id}`, xp: 100, attributes: { Strength: 3 }, created_at: q.completed_at }); }
+        }
+        await route.fulfill({ json: { saved: true } });
+    });
+    await page.goto('/'); await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Quests', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Quest journal' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Objective path' })).toBeVisible();
+    await page.getByRole('navigation', { name: 'Quest roster' }).getByRole('button').focus(); await page.keyboard.press('Enter');
+    await expect(page.getByRole('region', { name: 'Quest details' })).toBeFocused();
+    for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.dataset.theme = t, theme);
+        for (const width of [320, 390, 768, 1440]) {
+            await page.setViewportSize({ width, height: 1000 });
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+            if (width === 390 || width === 1440) await page.screenshot({ path: `/tmp/orion-quests-${theme}-${width}.png`, fullPage: true });
+        }
+    }
+    await page.getByRole('checkbox', { name: 'Complete Pack your training kit' }).click();
+    await expect(page.getByRole('checkbox', { name: 'Complete Pack your training kit', exact: true })).toBeChecked();
+    await page.getByRole('checkbox', { name: 'Complete Pack your training kit', exact: true }).click();
+    await expect(page.getByRole('checkbox', { name: 'Complete Pack your training kit' })).not.toBeChecked();
+    await page.getByRole('checkbox', { name: 'Complete Pack your training kit' }).click();
+    await page.getByLabel('Completed count for Practice your routine').fill('2'); await page.getByRole('button', { name: 'Save count' }).click();
+    await expect(page.getByRole('status').filter({ hasText: '+100 XP' })).toBeVisible();
+    await page.getByRole('button', { name: 'Completed', exact: true }).click();
+    await expect(page.getByText('Achievement secured.', { exact: false })).toBeVisible();
+    await expect(page.getByRole('checkbox')).toHaveCount(0);
+    expect(calls.filter(c => c.action === 'set_quest_objective')).toHaveLength(4);
+    expect(calls.at(-1)!.payload).toEqual({ id: 'q', objective_id: 'o3', progress: 2 });
+});
+test('quest builder persists drafts and accepts mixed objectives with canonical units', async ({ page }) => {
+    const state = missionFixture(); state.profile.units = 'imperial'; await mock(page, state);
+    let submitted: Record<string, unknown> = {};
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const { action, payload } = route.request().postDataJSON();
+        if (action === 'create_quest') { submitted = payload; state.definitions.push({ ...state.quests[0]!, id: payload.id }); }
+        await route.fulfill({ json: { saved: true } });
+    });
+    await page.goto('/'); const navigation = page.getByRole('navigation', { name: 'Main navigation' });
+    await navigation.getByRole('button', { name: 'Quests', exact: true }).click(); await page.getByRole('button', { name: 'Create quest', exact: true }).click();
+    await page.getByLabel('Quest title', { exact: true }).fill('My first expedition');
+    await navigation.getByRole('button', { name: 'Character', exact: true }).click(); await navigation.getByRole('button', { name: 'Quests', exact: true }).click();
+    await page.getByRole('button', { name: 'Create quest', exact: true }).click(); await expect(page.getByLabel('Quest title', { exact: true })).toHaveValue('My first expedition');
+    await page.getByLabel('Objective title', { exact: true }).fill('Prepare route'); await page.getByRole('button', { name: 'Add objective', exact: true }).click();
+    const second = page.locator('.objective-draft').nth(1); await second.getByLabel('Objective title', { exact: true }).fill('Run two miles');
+    await second.getByLabel('Progress from').selectOption('metres'); await second.getByLabel('Target (mi)').fill('2');
+    await second.getByLabel('Activity filter').selectOption('running'); await second.getByLabel('Attribute filter').selectOption('Endurance');
+    await page.getByRole('combobox', { name: 'Timeline', exact: true }).selectOption('custom'); await page.getByLabel('Deadline (UTC)', { exact: true }).fill('2099-01-01T12:00');
+    await page.setViewportSize({ width: 320, height: 1000 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByRole('button', { name: 'Accept quest', exact: true }).click(); await expect(page.getByRole('heading', { name: 'Quest accepted' })).toBeVisible();
+    expect(submitted.title).toBe('My first expedition'); expect(submitted.timeline).toBe('custom'); expect(submitted.due_local).toBe('2099-01-01T12:00');
+    expect(submitted.objectives).toEqual([{ title: 'Prepare route', metric: 'checklist', target: 1, activity_kind: null, attribute: null }, { title: 'Run two miles', metric: 'metres', target: 3218.688, activity_kind: 'running', attribute: 'Endurance' }]);
+    await page.getByRole('button', { name: 'Create another quest' }).click(); await expect(page.getByLabel('Quest title', { exact: true })).toHaveValue('');
+    await page.getByRole('button', { name: 'Build your momentum', exact: true }).click(); await expect(page.getByLabel('Quest title', { exact: true })).toHaveValue('Build your momentum');
+});
+test('past missions show expiry and abandonment without completion controls', async ({ page }) => {
+    const state = missionFixture(); state.quests[0]!.status = 'expired'; state.quests[0]!.ends_at = '2020-01-01T00:00:00Z'; await mock(page, state);
+    await page.goto('/'); await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Quests', exact: true }).click();
+    await page.getByRole('button', { name: 'Past', exact: true }).click(); await expect(page.getByText('The deadline passed.', { exact: false })).toBeVisible(); await expect(page.getByRole('button', { name: 'Save count' })).toHaveCount(0);
+    state.quests[0]!.status = 'active'; state.quests[0]!.ends_at = '2099-01-01T00:00:00Z'; await page.reload(); await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Quests', exact: true }).click();
+    await page.route('**/rest/v1/rpc/orion_command', async route => { state.quests[0]!.status = 'abandoned'; state.quests[0]!.archived = true; await route.fulfill({ json: { saved: true } }); });
+    await page.getByRole('button', { name: 'Abandon quest', exact: true }).click(); await page.getByRole('button', { name: 'Confirm abandonment' }).click();
+    await page.getByRole('button', { name: 'Past', exact: true }).click(); await expect(page.getByText('This attempt was closed', { exact: false })).toBeVisible();
+});
+
+test('uncertain quest acceptance retries the same ID and cannot duplicate the saved draft', async ({ page }) => {
+    const state = missionFixture(); state.quests = []; await mock(page, state);
+    const ids: string[] = []; let first = true;
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const { command_id, payload } = route.request().postDataJSON(); ids.push(command_id);
+        if (first) { first = false; state.definitions.push({ ...fixture().quests[0]!, id: payload.id }); await route.abort('failed'); }
+        else await route.fulfill({ json: { saved: true } });
+    });
+    await page.goto('/'); await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Quests', exact: true }).click();
+    await page.getByRole('button', { name: 'Create quest', exact: true }).click(); await page.getByLabel('Quest title', { exact: true }).fill('One attempt'); await page.getByLabel('Objective title', { exact: true }).fill('Do the thing');
+    await page.getByRole('button', { name: 'Accept quest', exact: true }).click(); await expect(page.getByRole('button', { name: 'Retry save' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Accept quest', exact: true })).toBeDisabled();
+    await page.reload(); await page.getByRole('button', { name: 'Retry save' }).click(); await expect(page.getByRole('button', { name: 'Retry save' })).toHaveCount(0);
+    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Quests', exact: true }).click(); await page.getByRole('button', { name: 'Create quest', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Quest accepted' })).toBeVisible(); expect(ids).toHaveLength(2); expect(ids[0]).toBe(ids[1]);
+    await expect(page.getByRole('button', { name: 'Accept quest', exact: true })).toHaveCount(0);
 });

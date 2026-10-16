@@ -2,6 +2,19 @@
 :root {
     font-family:'Barlow','Segoe UI',sans-serif;
     color-scheme:dark;
+    --content-width:1440px;
+    --form-width:880px;
+    --gutter:clamp(18px,3vw,42px);
+    --space-1:4px;
+    --space-2:8px;
+    --space-3:12px;
+    --space-4:16px;
+    --space-6:24px;
+    --space-8:32px;
+    --control-radius:4px;
+    --frame-radius:4px 16px 4px 16px;
+    --pixel-edge:#090e1a;
+    --pixel-shine:#f4f7ff;
     --strength:#f2a48e;
     --endurance:#70c7f0;
     --vitality:#8bddb9;
@@ -81,7 +94,8 @@ button {
     border:1px solid var(--line);
     background:var(--surface-raised);
     color:var(--text);
-    border-radius:12px;
+    border-radius:var(--control-radius);
+    min-height:44px;
     padding:.75rem 1.15rem;
     font-weight:500;
     transition:background-color .18s ease, border-color .18s ease, color .18s ease;
@@ -153,7 +167,7 @@ label {
 input,select,textarea {
     width:100%;
     border:1px solid var(--line);
-    border-radius:10px;
+    border-radius:var(--control-radius);
     background:var(--surface-raised);
     color:var(--text);
     padding:.75rem;
@@ -223,19 +237,19 @@ progress,meter {
     width:100%;
     height:7px;
     border:0;
-    border-radius:3px;
+    border-radius:0;
     background:var(--line);
     accent-color:var(--cyan);
 }
 
 progress::-webkit-progress-bar {
     background:var(--line);
-    border-radius:3px;
+    border-radius:0;
 }
 
 progress::-webkit-progress-value {
     background:var(--cyan);
-    border-radius:3px;
+    border-radius:0;
 }
 
 progress::-moz-progress-bar {

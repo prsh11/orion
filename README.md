@@ -2,7 +2,7 @@
 
 A private life-tracking RPG built with React, TypeScript, Vite, plain CSS, and
 Supabase. Log training, reading, study, focus, social time, habits, and recovery.
-Grow six attributes, complete recurring quests, and optionally accept boss
+Grow six attributes, complete one-time quests, and optionally accept boss
 missions with explicit rewards and penalties. New players start in dark mode
 with every attribute at 10. Light mode is available in Settings.
 
@@ -41,7 +41,7 @@ supabase db push
 
 Alternatively, execute the SQL migrations in filename order using Supabase’s SQL
 editor. The first creates tables, catalogs, RLS, commands, snapshots, and reward
-settlement. The second enables `pg_cron` and schedules boss expiry every minute.
+settlement. The second enables `pg_cron` and schedules boss and quest expiry every minute.
 The seed file deliberately contains no accounts or private data; exercise and
 boss catalogs are versioned with the schema. Apply each migration once.
 
@@ -61,13 +61,13 @@ where jobname = 'orion-boss-expiry';
 select * from cron.job_run_details order by start_time desc limit 10;
 ```
 
-Snapshots and writes also settle expired bosses, but the cron job is required
+Snapshots and writes also settle expired bosses and quests, but the cron job is required
 for settlement while the app is closed. See [Supabase Cron](https://supabase.com/docs/guides/cron).
 
 ## Data and progression
 
 Player-owned records cover profiles, activities, exercise definitions, completed
-workout sets, habits, quest definitions and instances, boss attempts, command
+workout sets, habits, quest definitions, instances and objectives, boss attempts, command
 receipts, and progression events. Gym activities are workout sessions; their sets
 reference the session’s activity ID. Habits and recovery completions are dated
 activity records, preserving daily history.
@@ -98,10 +98,22 @@ and [database function](https://supabase.com/docs/guides/database/functions) gui
 - Todo terms can be edited while open and before the deadline; afterward only
   title corrections and archiving are allowed. Saved deadlines are UTC instants
   entered/displayed in the profile timezone. Planned dates do not impose deadlines.
-- Recurring quests and existing one-off quests keep their original rules and
-  rewards. Automatic quests use existing activity metrics; todos never auto-complete.
+- New quests are one-time achievements with 1–20 checklist, manual-count, or automatic
+  objectives. Every objective must finish before the deadline; the quest reward is
+  granted once. Subparts have no separate quest rewards. Activity base rewards still apply.
+- Daily/weekly/monthly timelines mean one local day, seven local days, or one calendar
+  month from acceptance in the profile timezone, with month-end clamping. Custom deadlines
+  use the profile timezone. UTC boundaries and reward terms are frozen at acceptance.
+- Automatic objectives support activity and attribute filters and count only activity
+  both occurring and recorded inside the accepted interval (start inclusive, deadline exclusive).
+  One activity can advance multiple matching objectives. Imported history cannot count.
+- Expired and abandoned quests grant no reward or penalty and never restart. Completed
+  quests remain final. Accepted goals cannot change; title/description corrections are allowed.
+- The migration removes unfinished recurring attempts and disables future recurrence,
+  while preserving completed history and all earned XP, attributes and reward audit events.
+  Existing one-off quests retain their accepted rules. Todos never auto-complete.
 - Medium daily/weekly/monthly rewards remain 25/100/300 XP and 1/3/8 attribute
-  points. One-off rewards match daily rewards. Easy rewards are 15/50/150 XP and
+  points. Custom-timeline rewards match daily rewards. Easy rewards are 15/50/150 XP and
   1/2/4 points; hard rewards are 50/200/600 XP and 2/6/16 points.
 - Existing one-off quest deadlines are entered in the profile timezone and stored as UTC
   instants, unchanged by later timezone changes. Deadlines must be in the future.
@@ -152,8 +164,10 @@ victories share a milestone dialog; Continue or Escape dismisses it and returns
 focus to the originating control. Initial loads and retries never replay rewards.
 Background updates produce a silent recap instead of a modal.
 
-The cosmic HUD, attribute sigils, rank emblems, and objective crests are native
-SVG/CSS. All reward values come from confirmed profile changes, including floors;
+The pixel cosmic HUD, equipment icons, rank medals, and objective crests use
+shared native SVG/CSS. Six matching world illustrations are optimized local WebP
+assets, with no player character or equipment inventory. The dashboard shows the
+observatory; the Character screen owns the live attribute visualization. All reward values come from confirmed profile changes, including floors;
 this presentation adds no gameplay rules or database migrations. Losses and late
 completion use restrained feedback rather than victory effects.
 
@@ -258,3 +272,43 @@ unchanged IDs, boundaries, progress, completions, and reward events. Snapshot an
 export rows include todo fields and historical applied outcomes. No cron change
 is required: lateness is evaluated only when completing a todo. Run concurrency
 tests only with `ORION_TEST_DATABASE_URL` pointing at an isolated migrated database.
+
+### One-time quest migration
+
+Apply `supabase/migrations/202610160004_one_time_quests.sql` after all prior migrations
+and before deploying this client. It removes unfinished recurring quests, archives
+recurring definitions with completed history, and preserves earned rewards and audit
+records. Existing one-off quests and todos retain their accepted terms.
+
+The migration adds normalized objectives, one-time timeline/status fields, authenticated
+quest commands, snapshot/export support, and extends the existing minute cron entrypoint
+`orion_expire_bosses` to settle expired quests too; no extra cron job is required.
+Old clients cannot create recurring quests after migration. Deploy the updated client
+immediately afterward. Verify mixed objective completion, expiry with the app closed,
+completed history, account exports, and unchanged todos/bosses on a test account.
+
+The quest journal includes active missions, a completed archive, past attempts, editable
+presets, and account/unit-specific creation drafts. Saving uncertain requests retains
+the command ID; a confirmed draft is identified by its definition ID to prevent
+accidental duplicate acceptance after a retry. Unit/database tests include historical
+migration behavior separately from the full current migration chain.
+
+### Pixel cosmic artwork
+
+All six screens share the same pixel icon family, rank medals, panel frames,
+spacing tokens, and centered content/form widths. Text and controls use Barlow;
+artwork never contains live player values or replaces accessible labels.
+
+The illustrations in `src/assets/rpg/` were created with the built-in imagegen
+tool. `src/assets/rpg/prompts.json` records the original prompts and reference direction;
+`src/assets/rpg/transparency-prompts.json` records the background-removal edits.
+They depict the observatory, quest gate, training forge, journal archive, relic
+cabinet, and settings astrolabe. The six optimized WebP assets preserve transparency; only the
+current screen's artwork loads. Below-the-fold art is lazy-loaded, and image
+sizes reserve layout space. All six illustrations have transparent alpha backgrounds and no wrapper fill or
+border, so they blend into both themes. Their stone, cyan and amber accents are
+kept close to the interface palette.
+
+Artwork is static; reward effects still follow the existing reduced-motion and
+Full/Reduced/Off preferences. Relics are decorative, with no equipment ownership,
+bonuses, avatar customization, or new progression rules.

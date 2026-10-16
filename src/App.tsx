@@ -9,17 +9,21 @@ import Quests, { QuestCard } from './orion/Quests';
 import ProfileForm from './orion/ProfileForm';
 import { Analytics, Settings } from './orion/Settings';
 import CharacterConstellation from './orion/CharacterConstellation';
+import RpgArt from './orion/RpgArt';
+import type { RpgScene } from './orion/RpgArt';
 import NavIcon from './orion/NavIcon';
 import Todos from './orion/Todos';
 import GameHud from './orion/GameHud';
 import GameIcon, { RankBadge } from './orion/GameIcon';
 import RewardExperience from './orion/RewardExperience';
+import { questStatus } from './orion/questLogic';
 import { useExperience } from './orion/experience';
 import AudioFX from './audio';
 import './App.css';
 
 const tabs = ['Dashboard', 'Quests', 'Training', 'Journal', 'Character', 'Settings'] as const;
 type Tab = typeof tabs[number];
+const tabScenes: Record<Exclude<Tab, 'Dashboard'>, RpgScene> = { Quests: 'quest', Training: 'training', Journal: 'journal', Character: 'character', Settings: 'settings' };
 function Character() {
     const { data, presentations } = useOrion();
     if (!data) return null;
@@ -29,10 +33,10 @@ function Character() {
 function Dashboard({ navigate }: { navigate: (tab: Tab) => void }) {
     const { data } = useOrion();
     if (!data) return null;
-    const next = data.quests.filter(q => q.kind !== 'todo' && !q.completed_at && !q.archived && (q.period === 'one-off' || q.ends_at !== null && q.ends_at > data.server_time)).sort((a, b) => (a.due_at || a.ends_at || '9999').localeCompare(b.due_at || b.ends_at || '9999'))[0];
+    const next = data.quests.filter(q => q.kind !== 'todo' && questStatus(q, data.server_time) === 'active').sort((a, b) => (a.due_at || a.ends_at || '9999').localeCompare(b.due_at || b.ends_at || '9999'))[0];
     const boss = data.bosses.find(b => b.status === 'active');
-    return <div className="dashboard"><section className="dashboard-intro"><div className="hero-copy"><p className="system-status"><span /> {new Date(data.server_time).toLocaleDateString(undefined, { timeZone: data.profile.timezone, weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>A little stronger.<br />A little more you.</h1><p>Your next level lives in the things you do today.</p><div className="button-row"><button className="primary" onClick={() => navigate('Training')}><GameIcon name="training" />Log training</button><button onClick={() => navigate('Journal')}><GameIcon name="journal" />Write an entry</button></div></div><CharacterConstellation /></section>
-        <Todos compact /><div className="dashboard-grid"><div className="next-quest panel"><GameIcon name="quest" className="panel-crest" /><div className="section-heading"><h2>Your next quest</h2><button className="text-button" onClick={() => navigate('Quests')}>Quest log</button></div>{next ? <QuestCard quest={next} /> : <div className="empty"><h3>Choose your direction</h3><p>Start with one repeatable action. Daily, weekly, or monthly: you set the pace.</p><button onClick={() => navigate('Quests')}>Find a quest</button></div>}{boss && <div className="boss-alert"><h3><GameIcon name="boss" />{boss.title}</h3><p>Deadline {new Date(boss.deadline).toLocaleString(undefined, { timeZone: data.profile.timezone })}</p><button onClick={() => navigate('Quests')}>View active mission</button></div>}</div><Analytics compact /></div><DailyCare />
+    return <div className="dashboard"><section className="dashboard-intro"><div className="hero-copy"><p className="system-status"><span /> {new Date(data.server_time).toLocaleDateString(undefined, { timeZone: data.profile.timezone, weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>A little stronger.<br />A little more you.</h1><p>Your next level lives in the things you do today.</p><div className="button-row"><button className="primary" onClick={() => navigate('Training')}><GameIcon name="training" />Log training</button><button onClick={() => navigate('Journal')}><GameIcon name="journal" />Write an entry</button></div></div><RpgArt scene="dashboard" hero /></section>
+        <Todos compact /><div className="dashboard-grid"><div className="next-quest panel"><GameIcon name="quest" className="panel-crest" /><div className="section-heading"><h2>Your next quest</h2><button className="text-button" onClick={() => navigate('Quests')}>Quest log</button></div>{next ? <QuestCard quest={next} /> : <div className="empty"><h3>Choose your direction</h3><p>Choose a one-time achievement, set your timeline, and build its objective path.</p><button onClick={() => navigate('Quests')}>Find a quest</button></div>}{boss && <div className="boss-alert"><h3><GameIcon name="boss" />{boss.title}</h3><p>Deadline {new Date(boss.deadline).toLocaleString(undefined, { timeZone: data.profile.timezone })}</p><button onClick={() => navigate('Quests')}>View active mission</button></div>}</div><Analytics compact /></div><DailyCare />
     </div>;
 }
 function System() {
@@ -49,12 +53,12 @@ function System() {
                 {(error || pending) && <div className="error-banner" role="alert"><p>{error ?? 'An unfinished save is waiting. Retry it with the original request ID.'}</p><button disabled={busy} onClick={() => { void retry(); }}>{pending ? 'Retry save' : 'Reconnect'}</button></div>}
                 {!data ? <div className="panel"><h1>{busy ? 'Opening your System…' : 'Your System is waiting'}</h1><p>Connect to load your private character and history.</p>{!busy && <button onClick={() => { void refresh(); }}>Try again</button>}</div>
                     : !data.profile.onboarded ? <section className="panel onboarding"><h1>Welcome to Orion</h1><p>Your story begins at level 1. All six attributes start at 10.</p><ProfileForm /></section> : <>
-                        {tab !== 'Dashboard' && <div className="page-heading"><h1>{tab === 'Training' ? 'Build your strength.' : tab === 'Journal' ? 'Make time count.' : tab === 'Character' ? 'Meet your progress.' : tab === 'Quests' ? 'Give today a direction.' : 'Your System, your rules.'}</h1><p>{({ Quests: 'Small commitments. Meaningful rewards.', Training: 'Every completed set, every kilometre, every session.', Journal: 'Read. Focus. Connect. Recover.', Character: 'A record of what you keep showing up for.', Settings: 'Manage your preferences, data, and account.' })[tab]}</p></div>}
+                        {tab !== 'Dashboard' && <div className="page-heading"><div className="page-heading-copy"><h1>{tab === 'Training' ? 'Build your strength.' : tab === 'Journal' ? 'Make time count.' : tab === 'Character' ? 'Meet your progress.' : tab === 'Quests' ? 'Give today a direction.' : 'Your System, your rules.'}</h1><p>{({ Quests: 'Small commitments. Meaningful rewards.', Training: 'Every completed set, every kilometre, every session.', Journal: 'Read. Focus. Connect. Recover.', Character: 'A record of what you keep showing up for.', Settings: 'Manage your preferences, data, and account.' })[tab]}</p></div><RpgArt scene={tabScenes[tab]} /></div>}
                         {tab === 'Dashboard' && <Dashboard navigate={navigate} />}
                         {tab === 'Quests' && <Quests />}
                         {tab === 'Training' && <><ActivityForm /><ActivityHistory /><ExerciseLibrary /></>}
                         {tab === 'Journal' && <><ActivityForm journal /><DailyCare /><ActivityHistory journal /></>}
-                        {tab === 'Character' && <><Character /><Analytics /><section className="panel"><h2>Progression history</h2>{!data.events.length && <p className="empty">Your first action starts the story.</p>}<ul className="event-list">{data.events.map(e => <li key={e.id}><time>{new Date(e.created_at).toLocaleDateString()}</time><span>{e.source.startsWith('todo-undo:') ? 'Todo unchecked' : e.source.startsWith('todo:') ? 'Todo completed' : e.source.startsWith('activity') ? 'Activity reward' : e.source.startsWith('quest') ? 'Quest completed' : e.source.startsWith('boss') ? 'Boss result' : e.source.startsWith('legacy') ? 'Legacy import' : e.source.startsWith('correction') ? 'Activity correction' : 'Daily completion'}</span><strong>{e.xp >= 0 ? '+' : ''}{e.xp} XP</strong><span>{Object.entries(e.attributes).filter(([, n]) => n !== 0).map(([a, n]) => `${n > 0 ? '+' : ''}${n} ${a}`).join(', ')}</span></li>)}</ul></section></>}
+                        {tab === 'Character' && <><div className="character-overview"><Character /><CharacterConstellation /></div><Analytics /><section className="panel"><h2>Progression history</h2>{!data.events.length && <p className="empty">Your first action starts the story.</p>}<ul className="event-list">{data.events.map(e => <li key={e.id}><time>{new Date(e.created_at).toLocaleDateString()}</time><span>{e.source.startsWith('todo-undo:') ? 'Todo unchecked' : e.source.startsWith('todo:') ? 'Todo completed' : e.source.startsWith('activity') ? 'Activity reward' : e.source.startsWith('quest') ? 'Quest completed' : e.source.startsWith('boss') ? 'Boss result' : e.source.startsWith('legacy') ? 'Legacy import' : e.source.startsWith('correction') ? 'Activity correction' : 'Daily completion'}</span><strong>{e.xp >= 0 ? '+' : ''}{e.xp} XP</strong><span>{Object.entries(e.attributes).filter(([, n]) => n !== 0).map(([a, n]) => `${n > 0 ? '+' : ''}${n} ${a}`).join(', ')}</span></li>)}</ul></section></>}
                         {tab === 'Settings' && <Settings />}
                     </>}
             </main><footer>Orion<span>Progress at your own pace.</span></footer>

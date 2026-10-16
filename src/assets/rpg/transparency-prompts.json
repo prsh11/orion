@@ -1,0 +1,31 @@
+{
+  "generator": "Built-in image_gen",
+  "operation": "background-extraction",
+  "output": "True alpha WebP; no wrapper background, frame, or border.",
+  "assets": [
+    {
+      "file": "dashboard.webp",
+      "prompt": "Use case: background-extraction. Edit this exact Orion pixel-art observatory illustration. Remove the entire dark midnight background, star field, sky glow, orbital dotted lines, and crescent planet. Output a TRUE transparent alpha background around the observatory and floating island, including between detached floating rocks. Keep the observatory, six relics, island, violet crystals and detached rocks, their positions and pixel-art details. Preserve the same landscape 3:2 framing and proportions. Harmonize only excessive saturated purple lighting toward muted slate-blue stone, subtle violet crystals, soft cyan glass and restrained warm amber to fit a clean slate/cyan UI. No new objects, text, border, frame, floor plane, solid color backdrop, checkerboard pattern, or baked shadow rectangle. Clean natural pixel edges, no dark sky fringe."
+    },
+    {
+      "file": "quest.webp",
+      "prompt": "Use case: background-extraction. Edit this exact Orion pixel-art illustration of quest gate, cyan portal, floating stepping stones and crystals. Remove the entire opaque midnight sky/background and all unrelated star-field specks. Output a TRUE transparent alpha background around the subject, including spaces between floating rocks and within open structural gaps. Preserve the exact subject, composition, position, proportions, small details, 3:2 landscape framing and pixel-art look. Keep internal portal glow and object lighting. Harmonize only excessive saturated purple lighting toward muted slate-blue stone, subtle violet crystals, soft cyan accents and restrained warm amber for a slate/cyan app UI. No new objects, people, text, border, frame, floor plane, opaque backing, checkerboard pattern or baked rectangular shadow. Clean pixel edges with no midnight sky fringe."
+    },
+    {
+      "file": "training.webp",
+      "prompt": "Use case: background-extraction. Edit this exact Orion pixel-art illustration of forge, anvil, furnace, training weights, gauntlets, floating platform and crystals. Remove the entire opaque midnight sky/background and all unrelated star-field specks. Output a TRUE transparent alpha background around the subject, including spaces between floating rocks and within open structural gaps. Preserve the exact subject, composition, position, proportions, small details, 3:2 landscape framing and pixel-art look. Keep internal portal glow and object lighting. Harmonize only excessive saturated purple lighting toward muted slate-blue stone, subtle violet crystals, soft cyan accents and restrained warm amber for a slate/cyan app UI. No new objects, people, text, border, frame, floor plane, opaque backing, checkerboard pattern or baked rectangular shadow. Clean pixel edges with no midnight sky fringe."
+    },
+    {
+      "file": "journal.webp",
+      "prompt": "Use case: background-extraction. Edit this exact Orion pixel-art illustration of archive alcove, open book, shelves, lamps, floating platform and crystals. Remove the entire opaque midnight sky/background and all unrelated star-field specks. Output a TRUE transparent alpha background around the subject, including spaces between floating rocks and within open structural gaps. Preserve the exact subject, composition, position, proportions, small details, 3:2 landscape framing and pixel-art look. Keep internal portal glow and object lighting. Harmonize only excessive saturated purple lighting toward muted slate-blue stone, subtle violet crystals, soft cyan accents and restrained warm amber for a slate/cyan app UI. No new objects, people, text, border, frame, floor plane, opaque backing, checkerboard pattern or baked rectangular shadow. Clean pixel edges with no midnight sky fringe."
+    },
+    {
+      "file": "character.webp",
+      "prompt": "Use case: background-extraction. Edit this exact Orion pixel-art illustration of relic cabinet, six equipment relics, floating platform and crystals. Remove the entire opaque midnight sky/background and all unrelated star-field specks. Output a TRUE transparent alpha background around the subject, including spaces between floating rocks and within open structural gaps. Preserve the exact subject, composition, position, proportions, small details, 3:2 landscape framing and pixel-art look. Keep internal portal glow and object lighting. Harmonize only excessive saturated purple lighting toward muted slate-blue stone, subtle violet crystals, soft cyan accents and restrained warm amber for a slate/cyan app UI. No new objects, people, text, border, frame, floor plane, opaque backing, checkerboard pattern or baked rectangular shadow. Clean pixel edges with no midnight sky fringe."
+    },
+    {
+      "file": "settings.webp",
+      "prompt": "Use case: background-extraction. Edit this exact Orion pixel-art illustration of brass astrolabe, workbench, lamp, tools, floating platform and crystals. Remove the entire opaque midnight sky/background and all unrelated star-field specks. Output a TRUE transparent alpha background around the subject, including spaces between floating rocks and within open structural gaps. Preserve the exact subject, composition, position, proportions, small details, 3:2 landscape framing and pixel-art look. Keep internal portal glow and object lighting. Harmonize only excessive saturated purple lighting toward muted slate-blue stone, subtle violet crystals, soft cyan accents and restrained warm amber for a slate/cyan app UI. No new objects, people, text, border, frame, floor plane, opaque backing, checkerboard pattern or baked rectangular shadow. Clean pixel edges with no midnight sky fringe."
+    }
+  ]
+}

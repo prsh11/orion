@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
+import type { Snapshot } from '../src/orion/types';
 
 // Real PostgreSQL WASM engine: runs the production migration, not a JS reducer model.
 const db = new PGlite();
@@ -15,6 +16,18 @@ before(async () => {
       grant usage on schema auth to authenticated; grant execute on function auth.uid() to authenticated;
       insert into auth.users values ('${A}'),('${B}');`);
     await db.exec(await readFile('supabase/migrations/202610150001_orion.sql', 'utf8'));
+    const legacyUser = randomUUID(); await db.query('insert into auth.users values($1)', [legacyUser]);
+    await asUser(legacyUser); await snapshot(); await command('quest', { title: 'Existing quest', period: 'daily', metric: 'manual', target: 1, attribute: 'Intellect' });
+    const legacyQuest = (await snapshot()).quests[0]!;
+    await command('quest_progress', { id: legacyQuest.id, count: 1 });
+    const beforeMigration = await snapshot(); await root();
+    await db.exec(await readFile('supabase/migrations/202610160001_tasks.sql', 'utf8'));
+    await asUser(legacyUser); const migrated = await snapshot();
+    assert.deepEqual(migrated.profile, beforeMigration.profile);
+    assert.deepEqual(migrated.events, beforeMigration.events);
+    for (const [key, value] of Object.entries(beforeMigration.quests[0]!)) assert.deepEqual(migrated.quests[0]![key as keyof Snapshot['quests'][number]], value);
+    assert.equal(migrated.quests[0]!.difficulty, 'medium'); assert.equal(migrated.quests[0]!.reward_xp, 25); assert.equal(migrated.quests[0]!.penalty_xp, 0);
+    await root(); await db.query('delete from auth.users where id=$1', [legacyUser]);
 });
 after(async () => { await db.close(); });
 async function asUser(user: string) { await db.query("select set_config('request.jwt.claim.sub',$1,false)", [user]); await db.exec('set role authenticated'); }
@@ -23,7 +36,7 @@ async function command(action: string, payload: Record<string, unknown>, id = ra
     const r = await db.query<{ result: { personal_record?: boolean } }>('select public.orion_command($1,$2,$3::jsonb) result', [id, action, JSON.stringify(payload)]);
     return r.rows[0]?.result;
 }
-async function snapshot() { return (await db.query<{ result: { profile: { xp: number; attributes: Record<string, number> }; quests: { id: string; completed_at: string | null; starts_at: string; ends_at: string }[]; activities: { id: string }[]; bosses: { id: string; status: string }[]; events: { source: string }[] } }>('select public.orion_snapshot() result')).rows[0]!.result; }
+async function snapshot() { return (await db.query<{ result: Snapshot }>('select public.orion_snapshot() result')).rows[0]!.result; }
 const entry = (minutes = 30) => ({ kind: 'reading', title: 'Read', minutes, occurred_at: new Date(Date.now() - 1000).toISOString(), notes: '' });
 
 test('account isolation, anonymous rejection, no direct progression writes', async () => {
@@ -151,5 +164,98 @@ test('invalid legacy import rolls back and account deletion cascades private rec
     await root();
     for (const table of ['profiles', 'activities', 'habits', 'quest_definitions', 'quest_instances', 'progression_events', 'commands', 'exercises']) {
         assert.equal((await db.query(`select * from public.${table} where ${table === 'profiles' ? 'id' : 'user_id'}=$1`, [user])).rows.length, 0);
+    }
+});
+
+async function taskUser() {
+    await root(); const user = randomUUID(); await db.query('insert into auth.users values($1)', [user]);
+    await asUser(user); await snapshot(); return user;
+}
+const task = (extra: Record<string, unknown> = {}) => ({ title: 'My task', period: 'one-off', difficulty: 'medium', metric: 'manual', target: 1, attribute: 'Intellect', ...extra });
+test('all task schedules and difficulties award their exact frozen terms once', async () => {
+    for (const [period, rewards] of Object.entries({ 'one-off': [[15, 1], [25, 1], [50, 2]], daily: [[15, 1], [25, 1], [50, 2]], weekly: [[50, 2], [100, 3], [200, 6]], monthly: [[150, 4], [300, 8], [600, 16]] })) {
+        for (const [index, difficulty] of ['easy', 'medium', 'hard'].entries()) {
+            await taskUser(); await command('quest', task({ period, difficulty, target: 2 }));
+            const q = (await snapshot()).quests[0]!;
+            await command('quest_progress', { id: q.id, count: 1 }); assert.equal((await snapshot()).profile.xp, 0);
+            const id = randomUUID(); await command('quest_progress', { id: q.id, count: 1 }, id);
+            await command('quest_progress', { id: q.id, count: 1 }, id);
+            await assert.rejects(command('quest_progress', { id: q.id, count: 1 }), /unavailable/);
+            const s = await snapshot(); assert.equal(s.profile.xp, rewards[index]![0]); assert.equal(s.profile.attributes.Intellect, 10 + rewards[index]![1]!);
+        }
+    }
+});
+test('deadline conversion, late settlement, idempotency, immutable terms and exports', async () => {
+    const user = await taskUser();
+    await command('profile', { display_name: 'Task player', timezone: 'Asia/Kolkata', units: 'metric', domains: [] });
+    await assert.rejects(command('quest', task({ due_local: '2000-01-01T12:00' })), /future/);
+    await command('quest', task({ due_local: '2099-01-01T12:00' }));
+    const q = (await snapshot()).quests[0]!;
+    let row = (await db.query<{ definition_id: string; due_at: string }>('select definition_id,due_at::text from public.quest_instances where id=$1', [q.id])).rows[0]!;
+    assert.equal(new Date(row.due_at).toISOString(), '2099-01-01T06:30:00.000Z');
+    await command('profile', { display_name: 'Task player', timezone: 'UTC', units: 'metric', domains: [] });
+    row = (await db.query<typeof row>('select definition_id,due_at::text from public.quest_instances where id=$1', [q.id])).rows[0]!;
+    assert.equal(new Date(row.due_at).toISOString(), '2099-01-01T06:30:00.000Z');
+    await assert.rejects(command('edit_quest', { id: row.definition_id, title: 'Changed', target: 100 }), /fixed/);
+    await command('edit_quest', { id: row.definition_id, title: 'Corrected title' });
+    await root(); await db.query("update public.quest_instances set due_at=clock_timestamp()-interval '1 day' where id=$1", [q.id]);
+    await asUser(user); assert.equal((await snapshot()).profile.xp, 0);
+    const id = randomUUID(); await command('quest_progress', { id: q.id, count: 1 }, id); await command('quest_progress', { id: q.id, count: 1 }, id);
+    const s = await snapshot(); assert.equal(s.profile.xp, 18); assert.equal(s.profile.attributes.Intellect, 10);
+    const result = (await db.query<{ result: { quests: { reward_xp: number; penalty_xp: number; penalty_points: number }[] } }>('select public.orion_export() result')).rows[0]!.result;
+    assert.equal(result.quests[0]!.reward_xp, 25); assert.equal(result.quests[0]!.penalty_xp, 7); assert.equal(result.quests[0]!.penalty_points, 1);
+    await root();
+    for (const [offset, expected] of [["- interval '1 microsecond'", 0], ['', 7], ["+ interval '1 microsecond'", 7]] as const) {
+        const r = await db.query<{ n: number }>(`select private.quest_late_penalty(25,'2026-01-01Z','2026-01-01Z'::timestamptz ${offset}) n`);
+        assert.equal(r.rows[0]!.n, expected);
+    }
+});
+test('undated tasks persist; archived tasks cannot reward; accounts cannot complete each other’s tasks', async () => {
+    const user = await taskUser(); await command('quest', task()); const q = (await snapshot()).quests[0]!;
+    await root(); await db.query("update public.quest_instances set starts_at=clock_timestamp()-interval '2 years' where id=$1", [q.id]);
+    await asUser(user); assert.equal((await snapshot()).quests[0]!.completed_at, null);
+    await taskUser(); await assert.rejects(command('quest_progress', { id: q.id, count: 1 }), /unavailable/);
+    await asUser(user); const d = (await db.query<{ definition_id: string }>('select definition_id from public.quest_instances where id=$1', [q.id])).rows[0]!;
+    await command('archive_quest', { id: d.definition_id });
+    await assert.rejects(command('quest_progress', { id: q.id, count: 1 }), /unavailable/); assert.equal((await snapshot()).profile.xp, 0);
+});
+test('one-off automatic progress excludes earlier occurrence, earlier recording and imported activity', async () => {
+    const user = await taskUser(); await command('activity', entry(30));
+    await command('quest', task({ metric: 'minutes', target: 30 })); const q = (await snapshot()).quests[0]!;
+    assert.equal(q.completed_at, null);
+    await command('activity', entry(30)); assert.equal((await snapshot()).quests[0]!.completed_at, null);
+    await root();
+    await db.query(`insert into public.activities(id,user_id,kind,title,attribute,minutes,occurred_at,recorded_at) values(gen_random_uuid(),$1,'reading','Imported','Intellect',30,clock_timestamp(),'1970-01-01')`, [user]);
+    await asUser(user); assert.equal((await snapshot()).quests[0]!.completed_at, null);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    await command('activity', { ...entry(30), occurred_at: new Date().toISOString() });
+    assert.ok((await snapshot()).quests[0]!.completed_at);
+});
+test('recurring resets retain old instances and edits affect only future terms', async () => {
+    for (const period of ['daily', 'weekly', 'monthly']) {
+        const user = await taskUser(); await command('quest', task({ period })); const q = (await snapshot()).quests[0]!;
+        const d = (await db.query<{ definition_id: string }>('select definition_id from public.quest_instances where id=$1', [q.id])).rows[0]!;
+        await command('edit_quest', { id: d.definition_id, title: 'Future hard', metric: 'manual', target: 2, attribute: 'Strength', difficulty: 'hard' });
+        await root(); await db.query("update public.quest_definitions set created_at=created_at-interval '2 months' where id=$1", [d.definition_id]);
+        await db.query("update public.quest_instances set starts_at=starts_at-interval '3 months',ends_at=ends_at-interval '3 months' where id=$1", [q.id]);
+        await asUser(user); const s = await snapshot(); const old = s.quests.find(i => i.id === q.id)!;
+        assert.equal(old.completed_at, null); assert.ok(s.quests.length > 1); assert.equal(s.profile.xp, 0);
+        const terms = await db.query<{ reward_xp: number; target: number }>('select reward_xp,target from public.quest_instances where id=$1', [q.id]);
+        assert.equal(Number(terms.rows[0]!.target), 1);
+        await assert.rejects(command('quest_progress', { id: old.id, count: 1 }), /unavailable/);
+    }
+});
+
+test('every automatic metric completes one-off tasks from new matching activity only', async () => {
+    for (const [metric, attribute, kind, target] of [['minutes', 'Intellect', 'reading', 30], ['workouts', 'Endurance', 'cardio', 1], ['metres', 'Endurance', 'running', 1000], ['habits', 'Discipline', 'habit', 1], ['recovery', 'Vitality', 'recovery', 1]] as const) {
+        await taskUser(); await command('quest', task({ metric, attribute, target }));
+        const q = (await snapshot()).quests[0]!;
+        await new Promise(resolve => setTimeout(resolve, 5));
+        if (kind === 'recovery') await command('recovery', { target: 'Sleep: 8 hours' });
+        else if (kind === 'habit') {
+            await command('habit', { name: 'My habit' }); const h = (await db.query<{ id: string }>('select id from public.habits')).rows[0]!;
+            await command('complete_habit', { id: h.id });
+        } else await command('activity', { kind, title: 'New activity', minutes: 30, metres: 1000, occurred_at: new Date().toISOString() });
+        assert.ok((await snapshot()).quests.find(i => i.id === q.id)!.completed_at, metric);
     }
 });

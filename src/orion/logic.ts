@@ -1,4 +1,4 @@
-import type { Activity, Attribute, Exercise, Kind, Metric, Period, WorkoutSet } from './types';
+import type { Activity, Attribute, Difficulty, Exercise, Kind, Metric, Period, WorkoutSet } from './types';
 
 export const threshold = (level: number) => Math.floor(100 * (level - 1) ** 1.5);
 export function levelFor(xp: number) {
@@ -8,7 +8,11 @@ export function levelFor(xp: number) {
 }
 export const rankFor = (level: number) => level >= 80 ? 'S' : level >= 60 ? 'A' : level >= 40 ? 'B' : level >= 25 ? 'C' : level >= 10 ? 'D' : 'E';
 export const baseReward = (minutes: number) => ({ xp: Math.min(60, Math.floor(minutes / 10) * 10), points: Math.min(3, Math.floor(minutes / 30)) });
-export const questReward = (period: Period) => ({ xp: { daily: 25, weekly: 100, monthly: 300 }[period], points: { daily: 1, weekly: 3, monthly: 8 }[period] });
+export const questReward = (period: Period, difficulty: Difficulty = 'medium') => {
+    const base = { xp: { 'one-off': 25, daily: 25, weekly: 100, monthly: 300 }[period], points: { 'one-off': 1, daily: 1, weekly: 3, monthly: 8 }[period] };
+    if (difficulty === 'medium') return base;
+    return difficulty === 'hard' ? { xp: base.xp * 2, points: base.points * 2 } : { xp: period === 'one-off' || period === 'daily' ? 15 : base.xp / 2, points: period === 'weekly' ? 2 : period === 'monthly' ? 4 : 1 };
+};
 export const attributeFor = (kind: Kind): Attribute => ({ gym: 'Strength', running: 'Endurance', cardio: 'Endurance', other: 'Discipline', reading: 'Intellect', study: 'Intellect', focus: 'Discipline', social: 'Connection', habit: 'Discipline', recovery: 'Vitality' } as const)[kind];
 export const toKg = (weight: number, imperial: boolean) => imperial ? weight / 2.20462262185 : weight;
 export const fromKg = (kg: number, imperial: boolean) => imperial ? kg * 2.20462262185 : kg;

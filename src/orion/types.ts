@@ -1,7 +1,8 @@
 export const ATTRIBUTES = ['Strength', 'Endurance', 'Vitality', 'Intellect', 'Discipline', 'Connection'] as const;
 export type Attribute = typeof ATTRIBUTES[number];
 export type Kind = 'gym' | 'running' | 'cardio' | 'other' | 'reading' | 'study' | 'focus' | 'social' | 'habit' | 'recovery';
-export type Period = 'daily' | 'weekly' | 'monthly';
+export type Difficulty = 'easy' | 'medium' | 'hard';
+export type Period = 'one-off' | 'daily' | 'weekly' | 'monthly';
 export type Metric = 'minutes' | 'workouts' | 'metres' | 'habits' | 'recovery' | 'manual';
 export interface Profile {
     id: string; display_name: string; timezone: string; units: 'metric' | 'imperial';
@@ -14,8 +15,8 @@ export interface Activity {
 export interface Exercise { id: string; name: string; bodyweight: boolean; dumbbell: boolean }
 export interface WorkoutSet { id: string; activity_id: string; exercise_id: string; reps: number; kg: number; ordinal: number }
 export interface Habit { id: string; name: string; archived: boolean }
-export interface QuestDefinition { id: string; title: string; period: Period; metric: Metric; target: number; attribute: Attribute; archived: boolean }
-export interface Quest extends QuestDefinition { definition_id: string; starts_at: string; ends_at: string; progress: number; completed_at: string | null }
+export interface QuestDefinition { id: string; title: string; period: Period; metric: Metric; target: number; attribute: Attribute; archived: boolean; difficulty: Difficulty; due_at: string | null }
+export interface Quest extends QuestDefinition { definition_id: string; starts_at: string; ends_at: string | null; reward_xp: number; reward_points: number; penalty_xp: number; penalty_points: number; progress: number; completed_at: string | null }
 export interface Objective { metric: Exclude<Metric, 'manual'>; target: number }
 export interface BossTemplate { id: string; title: string; hours: number; attributes: Attribute[]; objectives: Objective[] }
 export interface Boss extends BossTemplate {

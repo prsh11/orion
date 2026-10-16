@@ -36,7 +36,8 @@ the multi-connection concurrency test. Never point tests at production.
 - Keep each commit focused on one change. Review the staged diff and run `git diff --cached --check` before committing. Do not include unrelated edits.
 - Run `pnpm lint` and `pnpm build` before merging code changes. Commit dependency updates together with `pnpm-lock.yaml`.
 - Keep secrets, local configuration, dependencies, and generated output out of Git. Never discard another contributor's work or rewrite shared history without explicit authorization.
-- Merge feature branches through reviewed pull requests when a remote is configured; prefer squash merges with a Conventional Commit title. Delete merged branches after review.
+- Leave completed work local by default. Push branches or create pull requests only when the user explicitly asks; completing a feature does not authorize either action.
+- When the user requests a pull request, merge feature branches through reviewed pull requests when a remote is configured; prefer squash merges with a Conventional Commit title. Delete merged branches after review.
 - See `CONTRIBUTING.md` for commands and examples.
 
 ## Architecture
@@ -60,6 +61,6 @@ the multi-connection concurrency test. Never point tests at production.
 - Every mutation uses a unique command ID. Persist and retry uncertain outcomes with that ID. PostgreSQL rejects reuse with a different payload; deterministic rejections roll back and unlock editing.
 - Serialize every player mutation and settlement on the profile row. Reward-source keys are unique. Keep clients read-only under RLS; grant execution only on authenticated entry points.
 - Store canonical kg/metres and UTC timestamps. Calendar day/week/month boundaries follow the profile timezone; weeks start Monday. Existing quest instances keep their UTC boundaries.
-- Boss deadlines are exclusive. Both occurrence and recording must be inside the accepted interval. Settlement runs before reads/writes and every minute through cron. Ordinary quests never penalize players.
+- Boss deadlines are exclusive. Both occurrence and recording must be inside the accepted interval. Settlement runs before reads/writes and every minute through cron. Missed recurring quests never penalize players. Todos apply late penalties only on completion: deduct 25% of difficulty XP (rounded up), grant no attribute point, and deduct 1 selected attribute point when present. Existing one-off quests retain their accepted reward rules.
 - Keep local drafts separate per account and unit preference. No unconfirmed rewards, offline mutation queue, public leaderboard, or fabricated historical workout sets.
 - Run `pnpm lint`, `pnpm build`, `pnpm test`, and relevant browser tests before requesting review. See README.md for deployment and live-account verification.

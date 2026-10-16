@@ -1,4 +1,4 @@
-import type { Activity, Attribute, Difficulty, Exercise, Kind, Metric, Period, WorkoutSet } from './types';
+import type { Activity, Attribute, Difficulty, Exercise, Kind, Metric, Period, Quest, WorkoutSet } from './types';
 
 export const threshold = (level: number) => Math.floor(100 * (level - 1) ** 1.5);
 export function levelFor(xp: number) {
@@ -36,4 +36,16 @@ export function metric(activities: Activity[], type: Metric) {
 export const metricLabel: Record<Metric, string> = { minutes: 'activity minutes', workouts: 'workouts', metres: 'metres run', habits: 'habit completions', recovery: 'recovery targets', manual: 'manual count' };
 export function bossActivities(activities: Activity[], accepted: string, deadline: string) {
     return activities.filter(a => a.occurred_at >= accepted && a.occurred_at < deadline && a.recorded_at >= accepted && a.recorded_at < deadline);
+}
+
+export function todoOrder(a: Quest, b: Quest) {
+    return Number(Boolean(a.completed_at)) - Number(Boolean(b.completed_at)) ||
+        (a.due_at || '9999').localeCompare(b.due_at || '9999') ||
+        (b.planned_on || '').localeCompare(a.planned_on || '') || a.starts_at.localeCompare(b.starts_at);
+}
+export function deadlineInput(instant: string | null, timezone: string) {
+    if (!instant) return '';
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(instant));
+    const part = (type: string) => parts.find(p => p.type === type)?.value ?? '';
+    return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
 }

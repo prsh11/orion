@@ -11,8 +11,8 @@ function snapshot(xp = 0): Snapshot {
 }
 test('confirmed reward types select distinct cues; simultaneous level rewards also play', () => {
     for (const [source, xp, expected] of [
-        ['activity:1', 30, 'success'], ['habit:1', 5, 'habitDone'], ['recovery:1', 10, 'counterUp'],
-        ['quest:1', 25, 'questComplete'], ['boss:1', 250, 'bossVictory'], ['boss:1', -75, 'bossFailure'],
+        ['activity:1', 30, 'success'], ['habit:1', 5, 'habitDone'], ['recovery:1', 10, 'habitDone'],
+        ['todo:1:1', 25, 'habitDone'], ['quest:1', 25, 'questComplete'], ['boss:1', 250, 'bossVictory'], ['boss:1', -75, 'bossFailure'],
     ] as const) {
         const before = snapshot(100000);
         const after = snapshot(100000 + xp);
@@ -37,7 +37,7 @@ test('initial loads, retries, non-reward saves and corrections are silent', () =
 test('every simultaneous completion is retained, including repeated quest cues', () => {
     const before = snapshot(90); const after = snapshot(500);
     after.events = ['activity:1', 'habit:1', 'recovery:1', 'quest:1', 'quest:2', 'boss:1'].map((source, i) => ({ id: String(i), source, xp: 10, attributes: {}, created_at: after.server_time }));
-    assert.deepEqual(soundsForUpdate(before, after, true), ['success', 'habitDone', 'counterUp', 'questComplete', 'questComplete', 'bossVictory', 'achievement', 'levelUp']);
+    assert.deepEqual(soundsForUpdate(before, after, true), ['success', 'habitDone', 'habitDone', 'questComplete', 'questComplete', 'bossVictory', 'achievement', 'levelUp']);
     assert.deepEqual(soundsForUpdate(after, after, true), []);
 });
 
@@ -46,4 +46,13 @@ test('a completed activity below the XP threshold still plays its completion cue
     after.activities = [{ id: 'new', kind: 'reading', title: 'Read', minutes: 5, metres: 0, notes: '', attribute: 'Intellect', occurred_at: after.server_time, recorded_at: after.server_time, daily_key: null, base_xp: 0, base_points: 0 }];
     after.events = [{ id: 'new-event', source: 'activity:1', xp: 0, attributes: {}, created_at: after.server_time }];
     assert.deepEqual(soundsForUpdate(before, after), ['success']);
+});
+
+test('todo undo is silent and a new completion cycle plays once', () => {
+    const before = snapshot(); const after = snapshot();
+    after.events = [{ id: 'undo', source: 'todo-undo:1:2', xp: -25, attributes: {}, created_at: after.server_time }];
+    assert.deepEqual(soundsForUpdate(before, after), []);
+    const completed = snapshot(); completed.events = [...after.events, { id: 'redo', source: 'todo:1:3', xp: 18, attributes: { Discipline: -1 }, created_at: after.server_time }];
+    assert.deepEqual(soundsForUpdate(after, completed), ['habitDone']);
+    assert.deepEqual(soundsForUpdate(completed, completed), []);
 });

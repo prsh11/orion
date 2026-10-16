@@ -22,6 +22,8 @@ before(async () => {
     await command('quest_progress', { id: legacyQuest.id, count: 1 });
     const beforeMigration = await snapshot(); await root();
     await db.exec(await readFile('supabase/migrations/202610160001_tasks.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/202610160002_daily_toggles.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/202610160003_todos.sql', 'utf8'));
     await asUser(legacyUser); const migrated = await snapshot();
     assert.deepEqual(migrated.profile, beforeMigration.profile);
     assert.deepEqual(migrated.events, beforeMigration.events);
@@ -258,4 +260,131 @@ test('every automatic metric completes one-off tasks from new matching activity 
         } else await command('activity', { kind, title: 'New activity', minutes: 30, metres: 1000, occurred_at: new Date().toISOString() });
         assert.ok((await snapshot()).quests.find(i => i.id === q.id)!.completed_at, metric);
     }
+});
+
+test('daily recovery and habit toggles reverse and restore base rewards without duplicates', async () => {
+    const user = await taskUser();
+    await command('habit', { name: 'Toggle habit' });
+    const habit = (await snapshot()).habits[0]!;
+    for (const [action, payload, xp, attribute] of [['recovery', { target: 'Water: 2 litres' }, 10, 'Vitality'], ['complete_habit', { id: habit.id }, 5, 'Discipline']] as const) {
+        const initial = await snapshot();
+        const complete = { ...payload, completed: true }; const undo = { ...payload, completed: false };
+        await command(action, complete); await command(action, complete);
+        assert.equal((await snapshot()).profile.xp, initial.profile.xp + xp);
+        const undoId = randomUUID(); await command(action, undo, undoId); await command(action, undo, undoId); await command(action, undo);
+        assert.equal((await snapshot()).profile.xp, initial.profile.xp);
+        assert.equal((await snapshot()).profile.attributes[attribute], initial.profile.attributes[attribute]);
+        const redoId = randomUUID(); await command(action, complete, redoId); await command(action, complete, redoId);
+        assert.equal((await snapshot()).profile.xp, initial.profile.xp + xp);
+        await command(action, undo, undoId); // An old retry cannot undo a newer completion.
+        assert.equal((await snapshot()).profile.xp, initial.profile.xp + xp);
+        await assert.rejects(command(action, { ...payload, completed: 'false' }), /completion state/);
+        await taskUser(); await command('recovery', { target: 'Water: 2 litres', completed: false });
+        assert.equal((await snapshot()).profile.xp, 0);
+        await asUser(user); assert.equal((await snapshot()).profile.xp, initial.profile.xp + xp);
+        await command(action, undo);
+    }
+});
+test('unchecking daily activity recalculates open quests and preserves settled rewards', async () => {
+    await taskUser();
+    await command('quest', task({ metric: 'recovery', attribute: 'Vitality', target: 2 }));
+    await command('recovery', { target: 'Water: 2 litres' });
+    assert.equal((await snapshot()).quests[0]!.progress, 1);
+    await command('recovery', { target: 'Water: 2 litres', completed: false });
+    assert.equal((await snapshot()).quests[0]!.progress, 0);
+    await command('recovery', { target: 'Water: 2 litres' });
+    await command('recovery', { target: 'Sleep: 8 hours' });
+    const settled = await snapshot(); assert.ok(settled.quests[0]!.completed_at);
+    await command('recovery', { target: 'Water: 2 litres', completed: false });
+    const undone = await snapshot(); assert.equal(undone.profile.xp, settled.profile.xp - 10);
+    assert.equal(undone.quests[0]!.completed_at, settled.quests[0]!.completed_at);
+});
+
+const newTodo = (extra: Record<string, unknown> = {}) => ({ title: 'Get groceries', ...extra });
+async function latestTodo() { return (await snapshot()).quests.find(q => q.kind === 'todo')!; }
+test('todos default to today and medium, never auto-complete, and all difficulties award optional attributes', async () => {
+    for (const [difficulty, xp] of [['easy', 15], ['medium', 25], ['hard', 50]] as const) {
+        for (const attribute of [null, 'Discipline']) {
+            await taskUser(); await command('todo', newTodo({ difficulty, attribute }));
+            const q = await latestTodo(); assert.equal(q.kind, 'todo'); assert.equal(q.attribute, attribute);
+            assert.equal(q.reward_xp, xp); assert.equal(q.reward_points, attribute ? 1 : 0); assert.equal(q.completed_at, null);
+            assert.equal(q.period, 'one-off'); assert.equal(q.metric, 'manual'); assert.equal(q.target, 1); assert.equal(q.ends_at, null);
+            const id = randomUUID(); const payload = { id: q.id, completed: true };
+            await command('set_todo_completed', payload, id); await command('set_todo_completed', payload, id); await command('set_todo_completed', payload);
+            let s = await snapshot(); assert.equal(s.profile.xp, xp); assert.equal(s.profile.attributes.Discipline, attribute ? 11 : 10);
+            await assert.rejects(command('set_todo_completed', { ...payload, completed: false }, id), /reused/);
+            await command('set_todo_completed', { id: q.id, completed: false });
+            s = await snapshot(); assert.equal(s.profile.xp, 0); assert.equal(s.profile.attributes.Discipline, 10);
+            assert.ok((await latestTodo()).completion_history[0]!.undone_at);
+            await command('set_todo_completed', payload); await command('set_todo_completed', { id: q.id, completed: false });
+            assert.equal((await snapshot()).profile.xp, 0);
+        }
+    }
+    await taskUser(); await command('todo', newTodo()); const q = await latestTodo();
+    assert.equal(q.difficulty, 'medium'); assert.equal(q.attribute, null); assert.equal(q.due_at, null); assert.equal(q.planned_on, new Date().toISOString().slice(0, 10));
+    await assert.rejects(command('todo', newTodo({ planned_on: 'infinity' })), /planned date/);
+    await assert.rejects(command('todo', newTodo({ difficulty: 'extreme' })), /constraint/);
+});
+test('late todos award reduced XP and an actual attribute loss, undone without attribute-floor exploits', async () => {
+    for (const [difficulty, xp, penalty] of [['easy', 15, 4], ['medium', 25, 7], ['hard', 50, 13]] as const) {
+        for (const startingPoints of [1, 10]) {
+            const user = await taskUser(); await command('todo', newTodo({ difficulty, attribute: 'Discipline', due_local: '2099-01-01T12:00' }));
+            const q = await latestTodo(); await root();
+            await db.query("update public.quest_instances set due_at=clock_timestamp()-interval '1 day' where id=$1", [q.id]);
+            await db.query("update public.profiles set attributes=jsonb_set(attributes,'{Discipline}',to_jsonb($2::integer)) where id=$1", [user, startingPoints]);
+            await asUser(user); assert.equal((await snapshot()).profile.xp, 0); // Passing a deadline alone never penalizes.
+            await command('set_todo_completed', { id: q.id, completed: true });
+            let s = await snapshot(); assert.equal(s.profile.xp, xp - penalty); assert.equal(s.profile.attributes.Discipline, Math.max(1, startingPoints - 1));
+            let completed = await latestTodo(); assert.equal(completed.penalty_xp, penalty); assert.equal(completed.penalty_points, 1);
+            assert.equal(completed.completion_history[0]!.reward_points, 0); assert.equal(completed.applied_points, startingPoints === 1 ? 0 : -1);
+            const undoId = randomUUID(); await command('set_todo_completed', { id: q.id, completed: false }, undoId);
+            s = await snapshot(); assert.equal(s.profile.xp, 0); assert.equal(s.profile.attributes.Discipline, startingPoints);
+            await command('set_todo_completed', { id: q.id, completed: true });
+            await command('set_todo_completed', { id: q.id, completed: false }, undoId);
+            completed = await latestTodo(); assert.ok(completed.completed_at); assert.equal(completed.completion_history.length, 2);
+        }
+    }
+    const user = await taskUser(); await command('todo', newTodo()); const q = await latestTodo();
+    await root(); await db.query("update public.quest_instances set due_at=clock_timestamp()-interval '1 hour' where id=$1", [q.id]);
+    await asUser(user); await command('set_todo_completed', { id: q.id, completed: true });
+    assert.equal((await snapshot()).profile.xp, 18); assert.equal((await latestTodo()).penalty_points, 0);
+});
+test('todo editing, profile timezone conversion, archiving and legacy-command guards', async () => {
+    const user = await taskUser();
+    await command('profile', { display_name: 'Todo player', timezone: 'Asia/Kolkata', units: 'metric', domains: [] });
+    await assert.rejects(command('todo', newTodo({ due_local: '2000-01-01T12:00' })), /future/);
+    await command('todo', newTodo({ due_local: '2099-01-01T12:00', planned_on: '2099-01-01' }));
+    const q = await latestTodo(); assert.equal(new Date(q.due_at!).toISOString(), '2099-01-01T06:30:00.000Z');
+    await command('edit_todo', { id: q.id, title: 'Buy groceries', difficulty: 'hard', attribute: 'Vitality', planned_on: '2098-12-31' });
+    const edited = await latestTodo(); assert.equal(edited.reward_xp, 50); assert.equal(edited.attribute, 'Vitality'); assert.equal(edited.planned_on, '2098-12-31'); assert.equal(edited.due_at, q.due_at);
+    for (const action of ['quest_progress', 'archive_quest', 'edit_quest']) await assert.rejects(command(action, { id: action === 'quest_progress' ? q.id : q.definition_id, count: 1, title: 'Bypass' }), /todo commands/);
+    await command('profile', { display_name: 'Todo player', timezone: 'UTC', units: 'metric', domains: [] }); assert.equal((await latestTodo()).due_at, q.due_at);
+    await taskUser(); await assert.rejects(command('set_todo_completed', { id: q.id, completed: true }), /unavailable/);
+    await assert.rejects(command('edit_todo', { id: q.id, title: 'Other account' }), /unavailable/);
+    await asUser(user); await command('set_todo_completed', { id: q.id, completed: true });
+    await assert.rejects(command('edit_todo', { id: q.id, title: 'Changed', difficulty: 'easy' }), /Only title/);
+    await command('edit_todo', { id: q.id, title: 'Corrected' });
+    await command('set_todo_completed', { id: q.id, completed: false });
+    await root(); await db.query("update public.quest_instances set due_at=clock_timestamp()-interval '1 hour' where id=$1", [q.id]);
+    await asUser(user); await assert.rejects(command('edit_todo', { id: q.id, title: 'Remove due', due_local: null }), /Only title/);
+    await command('edit_todo', { id: q.id, title: 'Overdue correction' });
+    await command('archive_todo', { id: q.id }); await assert.rejects(command('set_todo_completed', { id: q.id, completed: true }), /unavailable/);
+    const exported = (await db.query<{ result: Snapshot }>('select public.orion_export() result')).rows[0]!.result;
+    assert.equal(exported.quests[0]!.completion_history.length, 1); assert.equal(exported.quests[0]!.archived, true);
+});
+
+test('todo completion is manual and rechecking after a deadline uses a new recorded outcome', async () => {
+    const user = await taskUser(); await command('todo', newTodo({ attribute: 'Vitality', due_local: '2099-01-01T12:00' }));
+    const q = await latestTodo(); await command('recovery', { target: 'Water: 2 litres' });
+    assert.equal((await latestTodo()).completed_at, null);
+    await command('set_todo_completed', { id: q.id, completed: true });
+    let completed = await latestTodo(); assert.equal(completed.applied_xp, 25); assert.equal(completed.applied_points, 1);
+    await command('set_todo_completed', { id: q.id, completed: false });
+    await root(); await db.query("update public.quest_instances set due_at=clock_timestamp()-interval '1 second' where id=$1", [q.id]);
+    await asUser(user); await command('set_todo_completed', { id: q.id, completed: true });
+    completed = await latestTodo(); assert.equal(completed.applied_xp, 18); assert.equal(completed.applied_points, -1);
+    assert.equal(completed.completion_history.length, 2); assert.ok(completed.completion_history[0]!.undone_at);
+    assert.equal(completed.completion_history[0]!.reward_points, 1); assert.equal(completed.completion_history[1]!.reward_points, 0);
+    assert.equal(completed.completion_history[1]!.penalty_xp, 7);
+    await assert.rejects(command('set_todo_completed', { id: q.id, completed: null }), /completion state/);
 });

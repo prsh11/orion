@@ -259,3 +259,31 @@ footer { display: flex; justify-content: space-between; padding: 24px 42px; colo
     .notification { right: 15px; bottom: 15px; max-width: calc(100vw - 30px); }
     .auth-page { padding: 18px; }
 }
+
+/* Daily todos use a single checklist rather than quest cards. */
+.todo-panel { margin-bottom:1.5rem; }
+.todo-panel .section-heading p { margin:.3rem 0 0; }
+.todo-add { display:flex; gap:.75rem; align-items:flex-end; }
+.todo-add button { flex-shrink:0; }
+.todo-form { margin-bottom:1rem; }
+.todo-form details { margin-top:.75rem; }
+.todo-form summary { color:var(--muted); cursor:pointer; }
+.todo-form .form-grid { margin-top:1rem; }
+.todo-tabs { margin:1.25rem 0 .5rem; }
+.todo-tabs button[aria-pressed='true'] { border-color:var(--cyan); color:var(--cyan); }
+.todo-row { border-top:1px solid var(--line); padding:1.1rem 0; }
+.todo-line { display:flex; gap:.85rem; align-items:flex-start; }
+.todo-check { flex:0 0 1.25rem; width:1.25rem; height:1.25rem; margin:.25rem 0; accent-color:var(--cyan); cursor:pointer; }
+.todo-copy { flex:1; min-width:0; }
+.todo-copy h3 { font-family:inherit; font-size:1.05rem; font-weight:500; margin:0 0 .3rem; overflow-wrap:anywhere; }
+.todo-copy p { margin:.3rem 0; }
+.todo-terms { color:var(--muted); font-size:.82rem; }
+.todo-complete .todo-copy h3 { text-decoration:line-through; color:var(--muted); }
+.todo-line .text-button { padding:.15rem .3rem; }
+.todo-history { margin:.65rem 0 0 2.1rem; font-size:.85rem; }
+.todo-editor { margin:1rem 0 0 2.1rem; }
+@media (max-width:480px) {
+ .todo-add { flex-wrap:wrap; }
+ .todo-add .grow { flex-basis:100%; }
+ .todo-editor { margin-left:0; }
+}

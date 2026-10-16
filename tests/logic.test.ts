@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { baseReward, bestWeight, dayKey, fromKg, fromMetres, levelFor, pace, questReward, rankFor, threshold, toKg, toMetres, volume } from '../src/orion/logic';
+import { baseReward, bestWeight, dayKey, deadlineInput, fromKg, fromMetres, levelFor, pace, questReward, rankFor, threshold, toKg, toMetres, volume } from '../src/orion/logic';
 import { parseSave } from '../src/save';
 
 test('level thresholds and ranks include exact floored boundaries and reductions', () => {
@@ -40,4 +40,11 @@ test('legacy parser rejects malformed data and restores template functions', () 
     assert.equal(parseSave('{broken'), null);
     const save = { player: { xp: 123, streak: 2, lastActiveDate: null }, workouts: [], habits: [], lifeStats: { water: 0, sleep: 0, meals: 0, mindfulness: 0 }, lifeStatsDate: '2026-10-15', achievements: ['first_workout'], quests: [], questsDate: '2026-10-15', questsCompleted: 0, activityFeed: [], totalXp: 123, totalWorkouts: 0, totalMinutes: 0 };
     assert.equal(parseSave(JSON.stringify(save))?.player.xp, 123);
+});
+
+test('deadline form values use the profile timezone across date and DST boundaries', () => {
+    assert.equal(deadlineInput(null, 'UTC'), '');
+    assert.equal(deadlineInput('2026-10-15T23:30:00Z', 'Asia/Kolkata'), '2026-10-16T05:00');
+    assert.equal(deadlineInput('2026-03-08T06:30:00Z', 'America/New_York'), '2026-03-08T01:30');
+    assert.equal(deadlineInput('2026-03-08T07:30:00Z', 'America/New_York'), '2026-03-08T03:30');
 });

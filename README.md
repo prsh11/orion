@@ -86,18 +86,29 @@ and [database function](https://supabase.com/docs/guides/database/functions) gui
   grant 10 XP and one Vitality point per target/day.
 - Cumulative XP thresholds are `floor(100 * (level - 1)^1.5)`. Ranks are E at
   levels 1–9, D at 10–24, C at 25–39, B at 40–59, A at 60–79, and S at 80+.
-- User-defined tasks extend quests with one-off, daily, weekly, and monthly schedules.
-  New tasks default to manual progress, target 1, medium difficulty, and no deadline;
-  choose one attribute. Automatic tasks use the existing activity metrics.
+- Daily todos are simple manual checkboxes: title, optional attribute, planned date
+  (today by default), medium difficulty by default, and optional deadline.
+  Unfinished todos carry forward. Upcoming and history views keep other days accessible.
+  Easy/medium/hard todos award 15/25/50 XP and optionally +1 selected attribute.
+  Late completion deducts 25% XP rounded up and grants no attribute reward;
+  it instead deducts one selected attribute point. A medium late todo earns
+  18 XP/−1 attribute. Without an attribute, only XP changes. Passing the deadline
+  alone has no effect. Unchecking reverses the recorded actual outcome and
+  rechecking uses the new server completion time.
+- Todo terms can be edited while open and before the deadline; afterward only
+  title corrections and archiving are allowed. Saved deadlines are UTC instants
+  entered/displayed in the profile timezone. Planned dates do not impose deadlines.
+- Recurring quests and existing one-off quests keep their original rules and
+  rewards. Automatic quests use existing activity metrics; todos never auto-complete.
 - Medium daily/weekly/monthly rewards remain 25/100/300 XP and 1/3/8 attribute
   points. One-off rewards match daily rewards. Easy rewards are 15/50/150 XP and
   1/2/4 points; hard rewards are 50/200/600 XP and 2/6/16 points.
-- Optional one-off deadlines are entered in the profile timezone and stored as UTC
+- Existing one-off quest deadlines are entered in the profile timezone and stored as UTC
   instants, unchanged by later timezone changes. Deadlines must be in the future.
   Completion at or after the deadline grants the reward, then deducts 25% of its
-  XP (rounded up) and one selected attribute point. A medium late task nets
+  XP (rounded up) and one selected attribute point. An existing medium late one-off quest nets
   18 XP and zero attribute points. Merely becoming overdue never deducts rewards.
-- Undated one-off tasks stay open; dated tasks stay actionable when overdue.
+- Existing undated one-off quests stay open; dated quests stay actionable when overdue.
   Archiving closes a one-off without rewards. One-off terms are fixed, with title
   corrections allowed. Recurring edits affect future instances only. Rewards and
   penalties are stored on instances and included in completion history and exports.
@@ -212,3 +223,21 @@ The snapshot/export functions already serialize complete table rows, so the new
 fields are included automatically. No backfill awards or late penalties are run
 for historical completions. Verify task creation, late completion, and export on
 an isolated migrated database before deploying to a live account.
+
+Daily habit and recovery buttons can be unchecked for the current profile day.
+Unchecking removes that activity and reverses its base XP/attribute reward;
+checking again restores it without stacking rewards. Open quest progress follows
+the current records; already settled quest and boss outcomes stay final. Apply
+`supabase/migrations/202610160002_daily_toggles.sql` before deploying the updated
+client. Recovery completions use the queued completion chime when sounds are on.
+
+### Daily todo migration
+
+Apply `supabase/migrations/202610160003_todos.sql` after all prior migrations,
+including `202610160002_daily_toggles.sql`, before deploying the client. It adds a
+quest/todo distinction, optional todo attributes, planned dates, and completion
+cycle history to existing quest storage. Existing records remain quests with
+unchanged IDs, boundaries, progress, completions, and reward events. Snapshot and
+export rows include todo fields and historical applied outcomes. No cron change
+is required: lateness is evaluated only when completing a todo. Run concurrency
+tests only with `ORION_TEST_DATABASE_URL` pointing at an isolated migrated database.

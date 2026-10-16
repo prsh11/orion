@@ -64,3 +64,29 @@ test('PostgreSQL: concurrent late task completion awards and penalizes exactly o
         assert.equal((await pool.query('select count(*)::int n from public.progression_events where user_id=$1', [user])).rows[0].n, 2);
     } finally { await pool.query('delete from auth.users where id=$1', [user]); await pool.end(); }
 });
+
+test('PostgreSQL: concurrent todo completion and undo apply each outcome once', { skip: !process.env.ORION_TEST_DATABASE_URL }, async () => {
+    const pool = new pg.Pool({ connectionString: process.env.ORION_TEST_DATABASE_URL, max: 4 });
+    const user = randomUUID();
+    const run = async (id: string, action: string, payload: Record<string, unknown>) => {
+        const c = await pool.connect();
+        try {
+            await c.query('begin'); await c.query("select set_config('request.jwt.claim.sub',$1,true)", [user]); await c.query('set local role authenticated');
+            await c.query('select public.orion_command($1,$2,$3::jsonb)', [id, action, JSON.stringify(payload)]); await c.query('commit');
+        } catch (error) { await c.query('rollback'); throw error; }
+        finally { c.release(); }
+    };
+    try {
+        await pool.query('insert into auth.users(id) values($1)', [user]);
+        await run(randomUUID(), 'todo', { title: 'Concurrent groceries', attribute: 'Discipline' });
+        const q = (await pool.query("select id from public.quest_instances where user_id=$1 and kind='todo'", [user])).rows[0];
+        await pool.query("update public.quest_instances set due_at=clock_timestamp()-interval '1 second' where id=$1", [q.id]);
+        await Promise.all([run(randomUUID(), 'set_todo_completed', { id: q.id, completed: true }), run(randomUUID(), 'set_todo_completed', { id: q.id, completed: true })]);
+        assert.equal((await pool.query('select xp from public.profiles where id=$1', [user])).rows[0].xp, 18);
+        const undoId = randomUUID();
+        await Promise.all([run(undoId, 'set_todo_completed', { id: q.id, completed: false }), run(undoId, 'set_todo_completed', { id: q.id, completed: false })]);
+        const p = (await pool.query('select xp,attributes from public.profiles where id=$1', [user])).rows[0];
+        assert.equal(p.xp, 0); assert.equal(p.attributes.Discipline, 10);
+        assert.equal((await pool.query('select count(*)::int n from public.progression_events where user_id=$1', [user])).rows[0].n, 2);
+    } finally { await pool.query('delete from auth.users where id=$1', [user]); await pool.end(); }
+});

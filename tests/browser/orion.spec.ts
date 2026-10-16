@@ -9,7 +9,7 @@ function fixture(): Snapshot {
         profile: { id: uid, display_name: 'Ari', timezone: 'UTC', units: 'metric', onboarded: true, xp: 360, imported: false, domains: ['Strength', 'Intellect'], attributes: { Strength: 15, Endurance: 12, Vitality: 11, Intellect: 16, Discipline: 13, Connection: 10 } },
         activities: [{ id: 'a', kind: 'running', title: 'Morning run', minutes: 30, metres: 5000, notes: 'A calm start', attribute: 'Endurance', occurred_at: now, recorded_at: now, daily_key: null, base_xp: 30, base_points: 1 }],
         sets: [], exercises: [{ id: 'e', name: 'Incline dumbbell press', bodyweight: false, dumbbell: true }], habits: [{ id: 'h', name: 'Read before bed', archived: false }],
-        definitions: [], quests: [{ id: 'q', definition_id: 'd', difficulty: 'medium', due_at: null, reward_xp: 25, reward_points: 1, penalty_xp: 0, penalty_points: 0, title: 'A chapter a day', attribute: 'Intellect', period: 'daily', target: 20, progress: 10, metric: 'minutes', starts_at: '2020-01-01T00:00:00Z', ends_at: '2099-01-01T00:00:00Z', completed_at: null, archived: false }],
+        definitions: [], quests: [{ id: 'q', definition_id: 'd', kind: 'quest', planned_on: null, completion_revision: 0, applied_xp: 0, applied_points: 0, completion_history: [], difficulty: 'medium', due_at: null, reward_xp: 25, reward_points: 1, penalty_xp: 0, penalty_points: 0, title: 'A chapter a day', attribute: 'Intellect', period: 'daily', target: 20, progress: 10, metric: 'minutes', starts_at: '2020-01-01T00:00:00Z', ends_at: '2099-01-01T00:00:00Z', completed_at: null, archived: false }],
         bosses: [], templates: [{ id: 'first-gate', title: 'The first gate', hours: 24, attributes: ['Strength', 'Discipline'], objectives: [{ metric: 'workouts', target: 1 }, { metric: 'minutes', target: 60 }] }], events: [], server_time: now,
     };
 }
@@ -241,56 +241,118 @@ test('activity, habit, both quests, boss and level-up all play sequentially; mut
     expect(await notes()).toBe(40);
 });
 
-test('new tasks preview rewards, submit timezone-local deadlines, and show overdue completion history', async ({ page }) => {
-    const state = fixture();
-    state.quests.push({ ...state.quests[0]!, id: 'overdue', title: 'Overdue task', period: 'one-off', metric: 'manual', target: 1, progress: 0, ends_at: null, due_at: '2020-01-01T00:00:00Z' });
-    state.quests.push({ ...state.quests[0]!, id: 'undated', title: 'Undated task', period: 'one-off', metric: 'manual', target: 3, progress: 0, ends_at: null });
+test('daily todos quick add, optional terms, carry-forward, completion and undo in both themes', async ({ page }) => {
+    const state = fixture(); const today = state.server_time.slice(0, 10);
+    const todo = { ...state.quests[0]!, kind: 'todo' as const, period: 'one-off' as const, metric: 'manual' as const, target: 1, progress: 0, ends_at: null, planned_on: today };
+    state.quests.push({ ...todo, id: 'late', title: 'Get groceries', attribute: 'Discipline', due_at: '2020-01-01T12:00:00Z' });
+    state.quests.push({ ...todo, id: 'carry', title: 'Call the dentist', attribute: null, due_at: null, planned_on: '2020-01-01' });
+    state.quests.push({ ...todo, id: 'future', title: 'Renew passport', due_at: null, planned_on: '2099-01-01' });
     await mock(page, state);
+    await page.addInitScript(() => {
+        localStorage.setItem('orion-sound', 'on');
+        const original = AudioContext.prototype.createOscillator;
+        AudioContext.prototype.createOscillator = function () {
+            document.documentElement.dataset.soundNotes = String(Number(document.documentElement.dataset.soundNotes ?? 0) + 1);
+            return original.call(this);
+        };
+    });
     let submitted: Record<string, unknown> | undefined;
     await page.route('**/rest/v1/rpc/orion_command', async route => {
-        const body = route.request().postDataJSON(); submitted = body.payload;
-        if (body.action === 'quest_progress') {
-            const q = state.quests.find(q => q.id === body.payload.id)!;
-            q.completed_at = new Date().toISOString(); q.progress = 1; q.penalty_xp = 7; q.penalty_points = 1;
-            state.profile.xp += 18;
-            state.events.push({ id: 'reward', source: 'quest:' + q.id, xp: 25, attributes: { Intellect: 1 }, created_at: q.completed_at });
-            state.events.push({ id: 'penalty', source: 'quest-late:' + q.id, xp: -7, attributes: { Intellect: -1 }, created_at: q.completed_at });
+        const { action, payload } = route.request().postDataJSON(); submitted = payload;
+        if (action === 'todo') state.quests.push({ ...todo, id: 'new', title: payload.title, attribute: payload.attribute ?? null });
+        if (action === 'edit_todo') state.quests.find(q => q.id === payload.id)!.title = payload.title;
+        if (action === 'set_todo_completed') {
+            const q = state.quests.find(q => q.id === payload.id)!;
+            if (payload.completed) {
+                q.completed_at = state.server_time; q.applied_xp = 18; q.applied_points = -1; q.penalty_xp = 7; q.penalty_points = 1;
+                q.completion_history = [{ revision: 1, difficulty: q.difficulty, due_at: q.due_at, planned_on: q.planned_on, completed_at: state.server_time, undone_at: null, reward_xp: 25, reward_points: 0, penalty_xp: 7, penalty_points: 1, attribute: 'Discipline', applied_xp: 18, applied_points: -1 }];
+            } else { q.completed_at = null; q.completion_history[0]!.undone_at = state.server_time; }
+            state.profile.xp += payload.completed ? 18 : -18;
+            state.profile.attributes.Discipline += payload.completed ? -1 : 1;
+            state.events.push({ id: payload.completed ? 'todo-complete' : 'todo-undo', source: payload.completed ? 'todo:late:1' : 'todo-undo:late:2', xp: payload.completed ? 18 : -18, attributes: { Discipline: payload.completed ? -1 : 1 }, created_at: state.server_time });
         }
         await route.fulfill({ json: { saved: true } });
     });
     await page.goto('/');
-    await expect(page.locator('.quest-card')).toContainText('Overdue task');
+    const dashboard = page.getByRole('region', { name: 'Daily todos' });
+    await expect(dashboard.locator('.todo-row').first()).toContainText('Get groceries');
+    await expect(dashboard).toContainText('Carried from 2020-01-01'); await expect(dashboard).not.toContainText('Renew passport');
     await page.getByRole('navigation').getByRole('button', { name: 'Quests', exact: true }).click();
-    const form = page.locator('section').filter({ has: page.getByRole('heading', { name: 'New task', exact: true }) });
-    await expect(form.getByLabel('Period')).toHaveValue('one-off');
-    await expect(form.getByLabel('Difficulty')).toHaveValue('medium');
-    await expect(form.getByLabel('Progress from')).toHaveValue('manual');
-    await expect(form.getByLabel('Target', { exact: true })).toHaveValue('1');
-    await expect(form.getByLabel('Attribute', { exact: true })).toHaveValue('');
-    await expect(form).toContainText('Net late reward: 18 XP + 0 attribute');
-    await form.getByLabel('Title', { exact: true }).fill('My new task');
-    await form.getByLabel('Attribute', { exact: true }).selectOption('Connection');
-    await form.getByLabel('Optional deadline (UTC)').fill('2099-01-01T12:00');
-    await form.getByRole('button', { name: 'Create task' }).click();
-    await expect(form.getByRole('button', { name: 'Create task' })).toBeEnabled();
-    expect(submitted).toMatchObject({ title: 'My new task', period: 'one-off', difficulty: 'medium', metric: 'manual', target: 1, attribute: 'Connection', due_local: '2099-01-01T12:00' });
+    const list = page.getByRole('region', { name: 'Daily todos' });
+    await list.getByLabel('New todo', { exact: true }).fill('Take out recycling');
+    await list.getByRole('button', { name: 'Add todo' }).click();
+    await expect(list).toContainText('Take out recycling');
+    expect(submitted).toMatchObject({ title: 'Take out recycling', difficulty: 'medium', attribute: null, planned_on: today, due_local: null });
+    await list.getByText('Options · 25 XP', { exact: true }).click();
+    await list.getByLabel('Difficulty', { exact: true }).selectOption('hard');
+    await list.getByLabel('Todo attribute').selectOption('Vitality');
+    await list.getByLabel('Optional deadline (UTC)').fill('2099-01-01T12:00');
+    await expect(list).toContainText('On time: +50 XP / +1 Vitality');
+    await expect(list).toContainText('Late: +37 XP (−13 XP) / −1 Vitality');
+    await list.getByRole('button', { name: 'Upcoming', exact: true }).click();
+    await expect(list.locator('.todo-list')).toContainText('Renew passport');
+    await list.getByRole('button', { name: 'Today', exact: true }).click();
     await page.getByRole('button', { name: 'Dismiss notification' }).click();
-    await form.getByLabel('Period').selectOption('monthly'); await form.getByLabel('Difficulty').selectOption('hard');
-    await expect(form).toContainText('Reward: 600 XP + 16 points');
+    const groceries = list.locator('.todo-row').filter({ has: page.getByRole('heading', { name: 'Get groceries', exact: true }) });
+    await groceries.getByRole('checkbox').click(); await expect(groceries.getByRole('checkbox')).toBeChecked();
+    await expect(page.getByText('+18 XP · -1 Discipline confirmed', { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0))).toBe(2);
+    await groceries.getByText('Completion history', { exact: true }).click();
+    await expect(groceries).toContainText('applied +18 XP / −1 Discipline');
+    await groceries.getByRole('checkbox').click(); await expect(groceries.getByRole('checkbox')).not.toBeChecked();
+    await expect(groceries).toContainText('Unchecked');
+    expect(await page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0))).toBe(2);
+    await groceries.getByRole('button', { name: 'Edit', exact: true }).click();
+    await expect(groceries).toContainText('Only title corrections');
+    await groceries.getByLabel('Todo title').fill('Buy groceries');
+    await groceries.getByRole('button', { name: 'Save todo' }).click();
+    expect(submitted).toEqual({ id: 'late', title: 'Buy groceries' });
+    await expect(list.getByRole('button', { name: 'Add todo' })).toBeEnabled();
     for (const theme of ['light', 'dark']) {
         await page.evaluate(t => document.documentElement.dataset.theme = t, theme);
         for (const width of [320, 1440]) {
             await page.setViewportSize({ width, height: 1000 });
             expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-            await expect(page.locator('.quest-card').filter({ hasText: 'Undated task' })).toContainText('No deadline');
-            await page.screenshot({ path: `/tmp/orion-tasks-${theme}-${width}.png`, fullPage: true });
+            await page.screenshot({ path: `/tmp/orion-todos-${theme}-${width}.png`, fullPage: true });
         }
     }
-    const overdue = page.locator('.quest-card').filter({ hasText: 'Overdue task' });
-    await expect(overdue).toContainText('Overdue');
-    await expect(overdue.getByLabel('Add progress')).toHaveCount(0);
-    await overdue.getByRole('button', { name: 'Complete task' }).click();
-    await expect(page.getByText('+18 XP confirmed', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Quest history' }).click();
-    await expect(page.locator('.quest-card').filter({ hasText: 'Overdue task' })).toContainText('Net: +18 XP / +0 Intellect');
+    await list.getByRole('button', { name: 'Todo history' }).click(); await expect(list).toContainText('Buy groceries');
+});
+
+test('recovery and habit boxes can be unchecked and recovery plays a confirmed completion chime', async ({ page }) => {
+    const state = fixture(); await mock(page, state);
+    await page.addInitScript(() => {
+        localStorage.setItem('orion-sound', 'on');
+        const original = AudioContext.prototype.createOscillator;
+        AudioContext.prototype.createOscillator = function () {
+            document.documentElement.dataset.soundNotes = String(Number(document.documentElement.dataset.soundNotes ?? 0) + 1);
+            return original.call(this);
+        };
+    });
+    let sequence = 0;
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const { action, payload } = route.request().postDataJSON();
+        const recovery = action === 'recovery';
+        const key = recovery ? `recovery:${payload.target}` : `habit:${payload.id}`;
+        const dailyKey = key + ':' + state.server_time.slice(0, 10);
+        sequence++;
+        if (payload.completed) {
+            state.activities.push({ ...state.activities[0]!, id: 'daily-' + sequence, kind: recovery ? 'recovery' : 'habit', daily_key: dailyKey });
+        } else state.activities = state.activities.filter(activity => activity.daily_key !== dailyKey);
+        state.events.push({ id: String(sequence), source: payload.completed ? key + ':' + sequence : 'daily-undo:' + sequence, xp: payload.completed ? 10 : -10, attributes: {}, created_at: new Date().toISOString() });
+        await route.fulfill({ json: { saved: true } });
+    });
+    await page.goto('/');
+    const notes = () => page.evaluate(() => Number(document.documentElement.dataset.soundNotes ?? 0));
+    const water = page.getByRole('button', { name: 'Water: 2 litres', exact: true });
+    await expect(water).toHaveAttribute('aria-pressed', 'false');
+    await water.click(); await expect(water).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(notes).toBe(2);
+    await water.click(); await expect(water).toHaveAttribute('aria-pressed', 'false');
+    expect(await notes()).toBe(2);
+    await water.click(); await expect(water).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(notes).toBe(4);
+    const habit = page.getByRole('button', { name: 'Read before bed', exact: true });
+    await habit.click(); await expect(habit).toHaveAttribute('aria-pressed', 'true');
+    await habit.click(); await expect(habit).toHaveAttribute('aria-pressed', 'false');
 });

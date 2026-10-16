@@ -15,9 +15,10 @@ export function soundsForUpdate(before: Snapshot | null, after: Snapshot, person
     const newActivity = after.activities.some(activity => !before.activities.some(old => old.id === activity.id));
     for (const event of events) {
         if (event.source.startsWith('boss:')) sounds.push(event.xp > 0 ? 'bossVictory' : 'bossFailure');
+        else if (event.source.startsWith('todo:') && event.xp > 0) sounds.push('habitDone');
         else if (event.source.startsWith('quest:') && event.xp > 0) sounds.push('questComplete');
         else if (event.source.startsWith('habit:') && event.xp > 0) sounds.push('habitDone');
-        else if (event.source.startsWith('recovery:') && event.xp > 0) sounds.push('counterUp');
+        else if (event.source.startsWith('recovery:') && event.xp > 0) sounds.push('habitDone');
         else if (event.source.startsWith('activity:') && (event.xp > 0 || (event.xp === 0 && newActivity))) sounds.push('success');
     }
     if (personalRecord) sounds.push('achievement');

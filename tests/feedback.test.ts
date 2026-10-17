@@ -56,3 +56,46 @@ test('a replayed personal record result cannot celebrate an unrelated activity',
     after.events = [{ id: 'other', source: 'activity:other-command', xp: 10, attributes: {}, created_at: after.server_time }];
     assert.equal(feedbackForUpdate(before, after, { command, personalRecord: true })!.items.some(item => item.sound === 'achievement'), false);
 });
+
+function encounter(id: string, health: number): Snapshot['bosses'][number] {
+    return { id, title: `Boss ${id}`, template_id: '', hours: 168, period: 'weekly', avatar: 'knight', attributes: ['Discipline'], objectives: [], requirements: [{ id: 'distance', title: 'Run 20 km', metric: 'metres', target: 20000, progress: (100 - health) * 200, failed: false }], remaining_health: health, accepted_at: '2026-10-16T10:00:00Z', deadline: '2026-10-23T10:00:00Z', resolved_at: null, status: 'active' };
+}
+test('confirmed activity damage retains exact HP, avatar and every affected encounter', () => {
+    const before = snapshot(100); before.bosses = [encounter('one', 100), encounter('two', 70)];
+    const after = structuredClone(before); after.bosses[0]!.remaining_health = 87.5; after.bosses[1]!.remaining_health = 45;
+    after.profile.xp += 30; after.events = [{ id: 'run', source: 'activity:command', xp: 30, attributes: {}, created_at: after.server_time }];
+    const reward = feedbackForUpdate(before, after, { command })!;
+    assert.deepEqual(reward.bossImpacts?.map(b => [b.id, b.before, b.after, b.damage, b.avatar, b.defeated]), [['one', 100, 87.5, 12.5, 'knight', false], ['two', 70, 45, 25, 'knight', false]]);
+    assert.equal(reward.mode, 'reward');
+    assert.equal(feedbackForUpdate(after, after, { command }), null);
+    assert.equal(feedbackForUpdate(null, after, { command }), null);
+    assert.equal(feedbackForUpdate(before, after)!.bossImpacts, undefined);
+});
+test('manual progress without XP gets damage feedback; unchecking restores health without a victory cue', () => {
+    const before = snapshot(); before.bosses = [encounter('one', 100)];
+    const after = structuredClone(before); after.bosses[0]!.remaining_health = 50;
+    const origin = { command: { id: 'manual', action: 'set_boss_requirement', payload: {} } };
+    assert.equal(feedbackForUpdate(before, after, origin)!.mode, 'reward');
+    const restored = feedbackForUpdate(after, before, origin)!;
+    assert.equal(restored.mode, 'correction'); assert.equal(restored.bossImpacts![0]!.damage, -50);
+    assert.equal(restored.items.some(item => item.sound), false);
+});
+test('victory keeps the final blow and rewards together; resolved encounters never stage another attack', () => {
+    const before = snapshot(100); before.bosses = [encounter('one', 12.5)];
+    const after = structuredClone(before); after.profile.xp += 1000;
+    Object.assign(after.bosses[0]!, { status: 'victory', remaining_health: 0, resolved_at: after.server_time });
+    after.events = [{ id: 'victory', source: 'boss:one', xp: 1000, attributes: { Discipline: 15 }, created_at: after.server_time }];
+    const reward = feedbackForUpdate(before, after, { command })!;
+    assert.equal(reward.mode, 'milestone'); assert.equal(reward.bossImpacts![0]!.damage, 12.5); assert.equal(reward.bossImpacts![0]!.defeated, true); assert.equal(reward.bossImpacts![0]!.after, 0);
+    assert.equal(reward.items.filter(item => item.sound === 'bossVictory').length, 1);
+    const later = structuredClone(after); later.bosses[0]!.remaining_health = 100;
+    assert.equal(feedbackForUpdate(after, later, { command }), null);
+    const failed = structuredClone(before); failed.bosses[0]!.status = 'failure'; failed.bosses[0]!.remaining_health = 0;
+    assert.equal(feedbackForUpdate(before, failed, { command }), null);
+});
+
+test('tiny partial progress stays visible rather than rounding to zero damage', () => {
+    const before = snapshot(); before.bosses = [encounter('one', 100)];
+    const after = structuredClone(before); after.bosses[0]!.remaining_health = 99.9995;
+    assert.match(feedbackForUpdate(before, after, { command })!.summary, /<0.01 HP damage confirmed/);
+});

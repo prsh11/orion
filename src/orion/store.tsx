@@ -14,7 +14,8 @@ function reducer(state: OrionState, action: Action): OrionState {
     switch (action.type) {
         case 'busy': return { ...state, busy: true, error: null };
         case 'snapshot': return { ...state, data: action.data, busy: false, error: null,
-            presentations: action.presentation ? [...state.presentations, action.presentation] : state.presentations };
+            // A newer confirmed report supersedes a health-only popup. Earned rewards stay queued.
+            presentations: action.presentation ? [...state.presentations.filter(p => !(p.bossImpacts?.length && !p.items.length && !p.xp && !Object.keys(p.attributes).length && p.bossImpacts.every(impact => action.presentation?.bossImpacts?.some(next => next.id === impact.id)))), action.presentation] : state.presentations };
         case 'dismissPresentation': return { ...state, presentations: state.presentations.slice(1) };
         case 'error': return { ...state, busy: false, error: action.message, pending: action.pending ?? state.pending };
         case 'pending': return { ...state, pending: action.command };
@@ -34,11 +35,14 @@ export function OrionProvider({ userId, children }: { userId: string; children: 
         } catch { /* Storage may be unavailable. */ }
         return { data: null, busy: false, error: null, pending, notices: [], presentations: [] };
     });
+    const clock = useRef({ confirmed: NaN, receivedAt: 0 });
+    const serverNow = useCallback(() => clock.current.confirmed + Math.max(0, performance.now() - clock.current.receivedAt), []);
     const inFlight = useRef(false);
     const confirmedSnapshot = useRef<Snapshot | null>(null);
     const deferredOrigin = useRef<FeedbackOrigin | undefined>(undefined);
     const acceptSnapshot = useCallback((data: Snapshot, origin?: FeedbackOrigin) => {
         const presentation = feedbackForUpdate(confirmedSnapshot.current, data, origin ?? deferredOrigin.current);
+        clock.current = { confirmed: Date.parse(data.server_time), receivedAt: performance.now() };
         confirmedSnapshot.current = data;
         deferredOrigin.current = undefined;
         dispatch({ type: 'snapshot', data, presentation });
@@ -110,5 +114,5 @@ export function OrionProvider({ userId, children }: { userId: string; children: 
         return () => { window.removeEventListener('focus', focus); clearInterval(timer); };
     }, [refresh]);
     useEffect(() => () => { AudioFX.stop(); }, []);
-    return <OrionContext.Provider value={{ ...state, refresh, command, retry: async () => { if (state.pending) await execute(state.pending); else await refresh(); }, dismissPresentation, dismiss: () => dispatch({ type: 'dismiss' }) }}>{children}</OrionContext.Provider>;
+    return <OrionContext.Provider value={{ ...state, serverNow, refresh, command, retry: async () => { if (state.pending) await execute(state.pending); else await refresh(); }, dismissPresentation, dismiss: () => dispatch({ type: 'dismiss' }) }}>{children}</OrionContext.Provider>;
 }

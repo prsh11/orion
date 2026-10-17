@@ -22,11 +22,12 @@ function isDraft(value: unknown): value is Draft {
         && Array.isArray(d.sets) && d.sets.length < 1000 && d.sets.every((s: unknown) => s !== null && typeof s === 'object' && ['exercise_id', 'reps', 'weight'].every(k => typeof (s as Record<string, unknown>)[k] === 'string') && (!('original_kg' in s) || (typeof s.original_kg === 'number' && Number.isFinite(s.original_kg))) && (!('original_weight' in s) || typeof s.original_weight === 'string'));
 }
 export default function ActivityForm({ journal = false, edit, onDone }: { journal?: boolean; edit?: Activity; onDone?: () => void }) {
-    const { data, command, busy, pending } = useOrion();
+    const { data, command, busy, pending, serverNow } = useOrion();
     const timingId = useId();
+    const bossTimingId = useId();
     const timezone = data?.profile.timezone ?? 'UTC';
     const currentDate = () => {
-        const instant = new Date().toISOString();
+        const instant = new Date(serverNow()).toISOString();
         return { date: dateTimeInput(instant, timezone), date_timezone: timezone, date_instant: instant };
     };
     const imperial = data?.profile.units === 'imperial';
@@ -39,7 +40,7 @@ export default function ActivityForm({ journal = false, edit, onDone }: { journa
                 ? saved.date_instant : dateTimeInstant(saved.date, sourceTimezone);
             return { ...saved, date_mode: saved.date_mode ?? 'custom', date: instant ? dateTimeInput(instant, timezone) : saved.date, date_timezone: timezone, date_instant: instant ?? undefined };
         } } } catch { /* Use a fresh draft. */ }
-        return { id: edit?.id ?? crypto.randomUUID(), kind: edit?.kind ?? (journal ? 'reading' : 'gym'), title: edit?.title ?? '', minutes: edit ? String(edit.minutes) : journal ? '30' : '', distance: edit ? String(fromMetres(edit.metres, imperial)) : '', ...(edit ? { date: dateTimeInput(edit.occurred_at, timezone), date_timezone: timezone, date_instant: edit.occurred_at } : currentDate()), date_mode: edit || journal ? 'custom' : 'now', notes: edit?.notes ?? '', sets: data?.sets.filter(s => s.activity_id === edit?.id).sort((a, b) => a.ordinal - b.ordinal).map(s => { const weight = String(Number(fromKg(s.kg, imperial).toFixed(3))); return { exercise_id: s.exercise_id, reps: String(s.reps), weight, original_kg: s.kg, original_weight: weight }; }) ?? [] };
+        return { id: edit?.id ?? crypto.randomUUID(), kind: edit?.kind ?? (journal ? 'reading' : 'gym'), title: edit?.title ?? '', minutes: edit ? String(edit.minutes) : journal ? '30' : '', distance: edit ? String(fromMetres(edit.metres, imperial)) : '', ...(edit ? { date: dateTimeInput(edit.occurred_at, timezone), date_timezone: timezone, date_instant: edit.occurred_at } : currentDate()), date_mode: edit ? 'custom' : 'now', notes: edit?.notes ?? '', sets: data?.sets.filter(s => s.activity_id === edit?.id).sort((a, b) => a.ordinal - b.ordinal).map(s => { const weight = String(Number(fromKg(s.kg, imperial).toFixed(3))); return { exercise_id: s.exercise_id, reps: String(s.reps), weight, original_kg: s.kg, original_weight: weight }; }) ?? [] };
     });
     const [formError, setFormError] = useState('');
     useEffect(() => { try { localStorage.setItem(key, JSON.stringify(draft)); } catch { /* In-memory draft stays available. */ } }, [draft, key]);
@@ -49,33 +50,37 @@ export default function ActivityForm({ journal = false, edit, onDone }: { journa
     const reward = imported ? { xp: 0, points: 0 } : setRewards ? gymReward(draft.sets.map(s => ({ reps: Number(s.reps) }))) : baseReward(Number(draft.minutes));
     const occurredAt = draft.date_mode === 'now' ? currentDate().date_instant : draft.date_instant ?? dateTimeInstant(draft.date, draft.date_timezone ?? timezone);
     const occurrence = occurredAt ? Date.parse(occurredAt) : NaN;
-    const outsideQuestWindows = data.quests.filter(q => q.timeline && questStatus(q, data.server_time) === 'active'
+    const outsideQuestWindows = data.quests.filter(q => draft.date_mode !== 'now' && q.timeline && questStatus(q, data.server_time) === 'active'
         && q.objectives?.some(o => !['manual', 'checklist'].includes(o.metric) && matchingKinds(o.metric, o.attribute ?? '').includes(draft.kind) && (!o.activity_kind || o.activity_kind === draft.kind))
         && (occurrence < new Date(q.starts_at).getTime() || occurrence >= new Date(q.ends_at!).getTime()));
+    const outsideBossWindows = data.bosses.filter(b => draft.date_mode !== 'now' && b.status === 'active'
+        && b.requirements?.some(r => r.metric !== 'quest' && r.metric !== 'manual' && r.metric !== 'checklist' && matchingKinds(r.metric, r.attribute ?? '').includes(draft.kind) && (!r.activity_kind || r.activity_kind === draft.kind))
+        && (occurrence < Date.parse(b.accepted_at) || occurrence >= Date.parse(b.deadline)));
+    const canUseLoggingTime = edit && !imported && outsideBossWindows.some(b => Date.parse(edit.recorded_at) >= Date.parse(b.accepted_at) && Date.parse(edit.recorded_at) < Date.parse(b.deadline));
     const update = (field: keyof Omit<Draft, 'sets'>, value: string) => setDraft(d => ({ ...d, [field]: value, ...(field === 'date' ? { date_instant: undefined, date_timezone: timezone, date_mode: 'custom' as const } : {}) }));
     // A retry can succeed outside this form. Keep its saved draft identifiable
     // rather than submitting a second rewarded entry under a different ID.
-    if (!edit && data.activities.some(a => a.id === draft.id)) return <Panel><h2>Activity saved</h2><p>This draft is confirmed in your history.</p><button onClick={() => setDraft(d => ({ ...d, id: crypto.randomUUID(), title: '', notes: '', sets: [], date_mode: journal ? 'custom' : 'now', ...currentDate() }))}>Start another activity</button></Panel>;
+    if (!edit && data.activities.some(a => a.id === draft.id)) return <Panel><h2>Activity saved</h2><p>This draft is confirmed in your history.</p><button onClick={() => setDraft(d => ({ ...d, id: crypto.randomUUID(), title: '', notes: '', sets: [], date_mode: 'now', ...currentDate() }))}>Start another activity</button></Panel>;
     async function save(event: FormEvent<HTMLFormElement>) {
         event.preventDefault(); setFormError('');
         if (draft.kind === 'gym' && draft.sets.length === 0 && !imported) { setFormError('Add at least one completed set.'); return; }
         const savedInstant = draft.date_mode === 'now' ? currentDate().date_instant : occurredAt;
         if (!savedInstant) { setFormError(`Choose a valid date and time in ${timezone}. This local time may not exist because of a clock change.`); return; }
-        if (Date.parse(savedInstant) > Date.now()) { setFormError('Choose a date and time in the past.'); return; }
+        if (draft.date_mode !== 'now' && Date.parse(savedInstant) > serverNow()) { setFormError('Choose a date and time in the past.'); return; }
         const saved = await command('activity', {
             id: draft.id, kind: draft.kind, title: draft.title.trim() || draft.kind,
             minutes: setRewards ? 0 : Number(draft.minutes), metres: draft.kind === 'running' ? toMetres(Number(draft.distance), imperial) : 0,
-            occurred_at: savedInstant, notes: draft.notes,
+            occurred_at: savedInstant, time_mode: draft.date_mode === 'now' ? 'now' : 'custom', notes: draft.notes,
             sets: draft.kind === 'gym' ? draft.sets.map(s => ({ exercise_id: s.exercise_id, reps: Number(s.reps), kg: s.original_weight === s.weight && s.original_kg !== undefined ? s.original_kg : toKg(Number(s.weight), imperial) })) : [],
         });
         if (saved) {
             try { localStorage.removeItem(key); } catch { /* Storage unavailable. */ }
-            setDraft(d => ({ ...d, id: crypto.randomUUID(), title: '', notes: '', sets: [], date_mode: journal ? 'custom' : 'now', ...currentDate() })); onDone?.();
+            setDraft(d => ({ ...d, id: crypto.randomUUID(), title: '', notes: '', sets: [], date_mode: 'now', ...currentDate() })); onDone?.();
         }
     }
     const detailsFields = <>
         <label>Title (optional)<input maxLength={120} value={draft.title} onChange={e => update('title', e.target.value)} placeholder={journal ? 'A chapter before bed' : 'Evening training'} /></label>
-        <div className="activity-date-field"><label>Date and time ({timezone})<input type="datetime-local" step="1" required={draft.date_mode !== 'now'} aria-describedby={outsideQuestWindows.length ? timingId : undefined} value={draft.date} onChange={e => update('date', e.target.value)} /></label>{!edit && <><small>{draft.date_mode === 'now' ? `Uses the save time in ${timezone}.` : `Custom time in ${timezone}.`}</small><button className="text-button" type="button" onClick={() => setDraft(d => ({ ...d, ...currentDate(), date_mode: 'now' }))}>Use current time</button></>}</div>
+        <div className="activity-date-field"><label>Date and time ({timezone})<input type="datetime-local" step="1" required={draft.date_mode !== 'now'} aria-describedby={[outsideQuestWindows.length ? timingId : '', outsideBossWindows.length ? bossTimingId : ''].filter(Boolean).join(' ') || undefined} value={draft.date} onChange={e => update('date', e.target.value)} /></label>{!edit && <><small>{draft.date_mode === 'now' ? `Uses the server save time in ${timezone}.` : `Custom time in ${timezone}.`}</small><button className="text-button" type="button" onClick={() => setDraft(d => ({ ...d, ...currentDate(), date_mode: 'now' }))}>Use current time</button></>}</div>
         <label className="full-width">Notes (optional)<textarea maxLength={5000} rows={3} value={draft.notes} onChange={e => update('notes', e.target.value)} /></label>
     </>;
     return <Panel id={edit ? undefined : journal ? 'journal-entry' : 'training-entry'} tabIndex={-1}>
@@ -101,6 +106,7 @@ export default function ActivityForm({ journal = false, edit, onDone }: { journa
                 </>}
             </fieldset>
             {outsideQuestWindows.length > 0 && <div id={timingId} className="activity-quest-timing" role="status"><strong>This date falls outside a quest’s tracking window</strong>{outsideQuestWindows.map(q => <p key={q.id}>“{q.title}” counts activities performed and logged from {new Date(q.starts_at).toLocaleString(undefined, { timeZone: timezone })} until {new Date(q.ends_at!).toLocaleString(undefined, { timeZone: timezone })} ({timezone}). This entry can be saved, but it will not advance that quest. Check that the date reflects when you actually did the activity.</p>)}</div>}
+            {outsideBossWindows.length > 0 && <div id={bossTimingId} className="activity-quest-timing" role="status"><strong>This date falls outside a boss’s tracking window</strong>{outsideBossWindows.map(b => <p key={b.id}>“{b.title}” counts activities performed and logged from {new Date(b.accepted_at).toLocaleString(undefined, { timeZone: timezone })} until {new Date(b.deadline).toLocaleString(undefined, { timeZone: timezone })} ({timezone}). Check when you actually performed this activity.</p>)}{canUseLoggingTime && <><p>If the default clock was inaccurate, correct this entry to its original logging time: {new Date(edit.recorded_at).toLocaleString(undefined, { timeZone: timezone })} ({timezone}).</p><button type="button" disabled={busy || Boolean(pending)} onClick={() => setDraft(d => ({ ...d, date: dateTimeInput(edit.recorded_at, timezone), date_timezone: timezone, date_instant: edit.recorded_at, date_mode: 'custom' }))}>Use logging time</button></>}</div>}
             {formError && <p role="alert" className="feedback">{formError}</p>}
             <div className="training-save">
                 <div className="training-reward"><p className="reward-preview">{setRewards ? 'Estimated base' : 'Base reward'}: {reward.xp} XP + {reward.points} {attributeFor(draft.kind)}{edit ? ' (replaces the original reward)' : ''}</p>

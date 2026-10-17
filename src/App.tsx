@@ -25,6 +25,8 @@ import RewardExperience from './orion/RewardExperience';
 import { useExperience } from './orion/experience';
 import AudioFX from './audio';
 import './App.css';
+import './orion/rpg-ui.css';
+import './orion/boss-battle.css';
 
 const tabs = ['Dashboard', 'Todos', 'Quests', 'Bosses', 'Training', 'Journal', 'Character', 'Settings'] as const;
 const tabScenes: Record<Tab, RpgScene> = { Dashboard: 'dashboard', Todos: 'journal', Quests: 'quest', Bosses: 'quest', Training: 'training', Journal: 'journal', Character: 'character', Settings: 'settings' };

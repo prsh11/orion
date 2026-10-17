@@ -2,10 +2,13 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import QuestBuilder from './QuestBuilder';
 import { useOrion } from './context';
+import type { Quest } from './types';
+import { useExperience } from './experience';
 
-export default function QuestDialog({ onClose }: { onClose: () => void }) {
+export default function QuestDialog({ onClose, edit }: { onClose: () => void; edit?: Quest }) {
     const dialog = useRef<HTMLDialogElement>(null);
     const { error, pending, busy, retry } = useOrion();
+    const { effectiveEffects } = useExperience();
     useEffect(() => {
         const element = dialog.current;
         const launcher = document.activeElement;
@@ -18,7 +21,7 @@ export default function QuestDialog({ onClose }: { onClose: () => void }) {
             if (launcher instanceof HTMLElement) launcher.focus({ preventScroll: true });
         };
     }, []);
-    return createPortal(<dialog ref={dialog} className="quest-dialog" aria-labelledby="quest-builder-title" onCancel={event => { event.preventDefault(); onClose(); }} onKeyDown={event => {
+    return createPortal(<dialog ref={dialog} className="quest-dialog" data-effects={effectiveEffects} aria-labelledby="quest-builder-title" onCancel={event => { event.preventDefault(); onClose(); }} onKeyDown={event => {
         if (event.key !== 'Tab') return;
         const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex="0"]')).filter(el => !el.matches(':disabled') && el.getClientRects().length > 0);
         const first = controls[0]; const last = controls[controls.length - 1];
@@ -26,7 +29,7 @@ export default function QuestDialog({ onClose }: { onClose: () => void }) {
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }}>
         <div className="quest-dialog-scroll">
-            <QuestBuilder onClose={onClose} />
+            <QuestBuilder onClose={onClose} edit={edit} />
             {(error || pending) && <div className="error-banner quest-dialog-error" role="alert"><p>{error ?? 'An unfinished save is waiting. Retry it with the original request ID.'}</p><button disabled={busy} onClick={() => { void retry(); }}>{pending ? 'Retry save' : 'Reconnect'}</button></div>}
         </div>
     </dialog>, document.body);

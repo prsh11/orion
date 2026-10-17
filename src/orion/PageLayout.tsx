@@ -3,13 +3,15 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import RpgArt from './RpgArt';
 import type { RpgScene } from './RpgArt';
 import AudioFX from '../audio';
+import NavIcon from './NavIcon';
+import type { Tab } from './navigation';
 
 export function Panel({ children, className = '', ...props }: HTMLAttributes<HTMLElement>) {
     return <section {...props} className={`panel ${className}`}>{children}</section>;
 }
 
-export function PageHeader({ title, description, scene }: { title: string; description: string; scene: RpgScene }) {
-    return <header className="page-header"><div><h1>{title}</h1><p>{description}</p></div><RpgArt scene={scene} /></header>;
+export function PageHeader({ title, description, scene }: { title: Tab; description: string; scene: RpgScene }) {
+    return <header className="page-header"><div className="page-heading"><span className="page-heading-sigil" aria-hidden="true"><NavIcon page={title} /></span><div><h1>{title}</h1><p>{description}</p></div></div><RpgArt scene={scene} /></header>;
 }
 
 interface SectionItem { id: string; label: string }

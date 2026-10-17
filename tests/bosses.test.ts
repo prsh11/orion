@@ -30,6 +30,8 @@ before(async () => {
     for (const name of ['202610150001_orion', '202610160001_tasks', '202610160002_daily_toggles', '202610160003_todos', '202610160004_one_time_quests','202610160005_gym_rewards']) await db.exec(await readFile(`supabase/migrations/${name}.sql`, 'utf8'));
     legacyUser=await user(); await command('accept_boss',{id:'first-gate'}); legacyId=(await snapshot()).bosses[0]!.id; legacyXP=(await snapshot()).profile.xp;
     await root(); await db.exec(await readFile('supabase/migrations/202610170001_custom_bosses.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/202610170002_activity_server_clock.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/202610170003_encounter_editing.sql', 'utf8'));
 });
 after(async () => { await db.close(); });
 
@@ -49,7 +51,7 @@ test('mixed requirements have equal HP shares, correct upward, and victory rewar
  assert.equal(s.events.find(e=>e.source===`boss:${b.id}`)!.xp,1000); assert.equal(s.profile.attributes.Strength,25);
  await assert.rejects(progress(b.id,rs[1]!.id,3),/unavailable/); await assert.rejects(progress(b.id,rs[1]!.id,3,cid),/reused/);
 });
-async function quest() { await command('create_quest',{title:'Read and prepare',timeline:'weekly',difficulty:'medium',attribute:'Intellect',objectives:[check(),reading()]}); return (await snapshot()).quests[0]!; }
+async function quest(objectives: Record<string,unknown>[]=[check(),reading()]) { await command('create_quest',{title:'Read and prepare',timeline:'weekly',difficulty:'medium',attribute:'Intellect',objectives}); return (await snapshot()).quests[0]!; }
 test('linked quests retain prior partial progress and rewards; one quest supports several bosses',async()=>{
  await user(); const q=await quest(); await command('set_quest_objective',{id:q.id,objective_id:q.objectives![0]!.id,progress:1}); await activity(10);
  const req={title:'Finish quest',metric:'quest',quest_id:q.id,target:1}; await boss({requirements:[req]}); await boss({requirements:[req]});
@@ -141,4 +143,103 @@ test('exclusive direct deadlines exclude late recording and corrections, and cre
  await user(); const cid=randomUUID(); const payload={id:randomUUID(),title:'Once',avatar:'guardian',period:'weekly',attributes:['Strength'],accepted:true,requirements:[check()]};
  await command('create_boss',payload,cid); await command('create_boss',payload,cid); assert.equal((await snapshot()).bosses.length,1);
  await assert.rejects(command('create_boss',{...payload,title:'Different'},cid),/reused/);
+});
+
+test('Zelda: a qualifying 20 km run completes a 20 km boss requirement',async()=>{
+ await user(); await boss({title:'Zelda',requirements:[{title:'Run 20 km',metric:'metres',target:20000,activity_kind:'running',attribute:'Endurance'}]});
+ const before=await snapshot(); const b=before.bosses[0]!; assert.equal(b.requirements![0]!.progress,0);
+ await command('activity',{kind:'running',title:'20 km run',minutes:120,metres:20000,occurred_at:new Date().toISOString()});
+ const after=await snapshot(); assert.equal(after.activities[0]!.metres,20000); assert.equal(after.bosses[0]!.requirements![0]!.progress,20000); assert.equal(after.bosses[0]!.status,'victory');
+});
+
+test('default-time runs ignore a slow or fast browser clock and retries freeze the saved instant',async()=>{
+ for(const offset of [-240000,240000]){
+  await user();await boss({title:'Zelda',requirements:[check(),{title:'Run 20 km',metric:'metres',target:20000,activity_kind:'running',attribute:'Endurance'}]});
+  const b=(await snapshot()).bosses[0]!;await progress(b.id,b.requirements![0]!.id,1);
+  const payload={id:randomUUID(),kind:'running',title:'Run',minutes:30,metres:20000,time_mode:'now',occurred_at:new Date(Date.now()+offset).toISOString()};const cid=randomUUID();
+  await command('activity',payload,cid);let s=await snapshot();const a=s.activities[0]!;
+  assert.equal(s.bosses[0]!.status,'victory');assert.equal(s.bosses[0]!.requirements![1]!.progress,20000);
+  assert.ok(Date.parse(a.occurred_at)>=Date.parse(b.accepted_at));assert.ok(Date.parse(a.occurred_at)<=Date.parse(a.recorded_at));
+  const xp=s.profile.xp;await command('activity',payload,cid);s=await snapshot();assert.equal(s.activities.length,1);assert.equal(s.activities[0]!.occurred_at,a.occurred_at);assert.equal(s.profile.xp,xp);assert.equal(s.events.filter(e=>e.source===`boss:${b.id}`).length,1);
+ }
+});
+test('explicit earlier runs remain excluded; correcting to the original logging instant settles Zelda without another base reward',async()=>{
+ await user();await boss({title:'Zelda',requirements:[{title:'Run 20 km',metric:'metres',target:20000,activity_kind:'running',attribute:'Endurance'}]});
+ const b=(await snapshot()).bosses[0]!;const payload={id:randomUUID(),kind:'running',title:'Run',minutes:30,metres:20000,time_mode:'custom',occurred_at:new Date(Date.now()-240000).toISOString()};
+ await command('activity',payload);let s=await snapshot();const a=s.activities[0]!;assert.equal(s.bosses[0]!.status,'active');assert.equal(s.bosses[0]!.requirements![0]!.progress,0);assert.equal(s.profile.xp,30);assert.equal(Date.parse(a.occurred_at),Date.parse(payload.occurred_at));
+ await command('activity',{...payload,occurred_at:a.recorded_at});s=await snapshot();assert.equal(s.activities.length,1);assert.equal(s.bosses[0]!.status,'victory');assert.equal(s.profile.xp,1030);assert.equal(s.events.filter(e=>e.source===`boss:${b.id}`).length,1);
+ await assert.rejects(command('activity',{...payload,time_mode:'invalid'}),/time mode/);
+});
+
+function goalPayload(r: { id: string; title: string; metric: string; target: number; activity_kind?: string | null; attribute?: string | null; quest_id?: string | null }) {
+ return {id:r.id,title:r.title,metric:r.metric,target:r.target,activity_kind:r.activity_kind??null,attribute:r.attribute??null,...(r.metric==='quest'?{quest_id:r.quest_id}: {})};
+}
+async function reviseBoss(extra: Record<string,unknown>={},cid=randomUUID()) {
+ const b=(await snapshot()).bosses[0]!;
+ return command('revise_boss',{id:b.id,revision:b.edit_revision??0,accepted:true,title:b.title,description:b.description,avatar:b.avatar,period:b.period,attributes:b.attributes,requirements:b.requirements!.map(goalPayload),...extra},cid);
+}
+async function reviseQuest(extra: Record<string,unknown>={},cid=randomUUID()) {
+ const q=(await snapshot()).quests.find(q=>q.timeline)!;
+ return command('revise_quest',{id:q.id,revision:q.edit_revision??0,accepted:true,title:q.title,description:q.description,timeline:q.timeline,difficulty:q.difficulty,attribute:q.attribute,objectives:q.objectives!.map(goalPayload),...extra},cid);
+}
+test('boss edits add missing goals, retain progress and acceptance, and recalculate health and frozen stakes',async()=>{
+ await user();await boss({requirements:[count(4),reading(20)]});let s=await snapshot();const b=s.bosses[0]!;
+ await progress(b.id,b.requirements![0]!.id,2);await activity(10);s=await snapshot();
+ await reviseBoss({title:'A revised encounter',avatar:'spectral',period:'monthly',attributes:['Intellect'],requirements:[...s.bosses[0]!.requirements!.map(goalPayload),check('Forgotten task')]});
+ s=await snapshot();const edited=s.bosses[0]!;assert.equal(edited.title,'A revised encounter');assert.equal(edited.accepted_at,b.accepted_at);assert.equal(edited.edit_revision,1);assert.equal(edited.victory_xp,3000);assert.equal(edited.failure_xp,750);assert.equal(edited.victory_points,30);assert.equal(edited.failure_points,10);assert.deepEqual(edited.attributes,['Intellect']);
+ assert.equal(edited.requirements!.length,3);assert.equal(edited.requirements![0]!.progress,2);assert.equal(edited.requirements![1]!.progress,10);assert.equal(bossHealth(edited,s),67);assert.equal(s.profile.xp,10);
+ assert.ok(Math.abs(Date.parse(edited.deadline)-Date.parse(bossDeadline(b.accepted_at,s.profile.timezone,'monthly')!))<1000);
+});
+test('quest edits preserve objective IDs and progress, accept extra subparts and recalculate rewards',async()=>{
+ await user();await quest([count(4),reading(20)]);let s=await snapshot();const q=s.quests[0]!;
+ await command('set_quest_objective',{id:q.id,objective_id:q.objectives![0]!.id,progress:2});await activity(10);s=await snapshot();
+ await reviseQuest({title:'A fuller quest',timeline:'monthly',difficulty:'hard',attribute:'Connection',objectives:[...s.quests[0]!.objectives!.map(goalPayload),check('Forgotten subpart')]});
+ s=await snapshot();const edited=s.quests[0]!;assert.equal(edited.title,'A fuller quest');assert.equal(edited.edit_revision,1);assert.equal(edited.starts_at,q.starts_at);assert.equal(edited.objectives!.length,3);assert.equal(edited.objectives![0]!.id,q.objectives![0]!.id);assert.equal(edited.objectives![0]!.progress,2);assert.equal(edited.objectives![1]!.progress,10);assert.equal(edited.reward_xp,600);assert.equal(edited.reward_points,16);assert.equal(edited.attribute,'Connection');assert.equal(edited.status,'active');
+});
+test('revisions reject stale versions, invalid links, foreign goal IDs and invalid dates atomically',async()=>{
+ const owner=await user();await boss({requirements:[count()]});let s=await snapshot();const b=s.bosses[0]!;const cid=randomUUID();
+ const payload={id:b.id,revision:0,accepted:true,title:'Revised',description:'',avatar:'knight',period:'yearly',attributes:['Discipline'],requirements:b.requirements!.map(goalPayload)};
+ await command('revise_boss',payload,cid);await command('revise_boss',payload,cid);assert.equal((await snapshot()).bosses[0]!.edit_revision,1);
+ await assert.rejects(command('revise_boss',payload),/changed/);await assert.rejects(command('revise_boss',{...payload,title:'Mismatch'},cid),/reused/);
+ await assert.rejects(reviseBoss({accepted:false}),/Review and accept/);
+ await assert.rejects(reviseBoss({requirements:[{...count(),id:randomUUID()}]}),/Goal unavailable/);
+ await assert.rejects(reviseBoss({requirements:[{title:'Missing link',metric:'quest',target:1,quest_id:randomUUID()}]}),/Link each active quest/);
+ await assert.rejects(reviseBoss({requirements:[{...reading(),activity_kind:'running'}]}),/Attribute filter/);
+ assert.equal((await snapshot()).bosses[0]!.edit_revision,1);
+ await user();await assert.rejects(command('revise_boss',{...payload,revision:1}),/Only active/);await asUser(owner);
+ await quest([check()]);await assert.rejects(reviseQuest({timeline:'custom',deadline:'2020-01-01T00:00:00Z'}),/future/);await assert.rejects(reviseQuest({objectives:[]}),/1 to 20/);
+});
+test('reducing targets can settle a quest and linked boss once using recalculated rewards; resolved terms remain final',async()=>{
+ await user();await quest([count(4)]);let s=await snapshot();const q=s.quests[0]!;await command('set_quest_objective',{id:q.id,objective_id:q.objectives![0]!.id,progress:2});
+ await boss({requirements:[{title:'Linked achievement',metric:'quest',target:1,quest_id:q.id}]});
+ await reviseQuest({difficulty:'hard',objectives:[{...goalPayload(q.objectives![0]!),target:2}]});s=await snapshot();
+ assert.equal(s.quests[0]!.status,'completed');assert.equal(s.bosses[0]!.status,'victory');assert.ok(Date.parse(s.quests[0]!.completed_eligible_at!)>=Date.parse(s.quests[0]!.revised_at!));
+ const xp=s.profile.xp;await assert.rejects(reviseQuest({difficulty:'easy'}),/Only active/);await assert.rejects(reviseBoss({period:'daily'}),/Only active/);s=await snapshot();assert.equal(s.profile.xp,xp);assert.equal(s.events.filter(e=>e.source===`quest:${q.id}`).length,1);assert.equal(s.events.filter(e=>e.source===`boss:${s.bosses[0]!.id}`).length,1);
+});
+
+test('revisions clamp counts, reset changed types, retain existing completed links and reject new completed links',async()=>{
+ await user();const q=await quest([check()]);await boss({requirements:[count(4),reading(20),{title:'Linked quest',metric:'quest',target:1,quest_id:q.id}]});
+ let s=await snapshot();const b=s.bosses[0]!;await progress(b.id,b.requirements![0]!.id,3);await activity(10);
+ await command('set_quest_objective',{id:q.id,objective_id:q.objectives![0]!.id,progress:1});
+ s=await snapshot();assert.equal(s.bosses[0]!.status,'active');
+ await reviseBoss({requirements:s.bosses[0]!.requirements!.map((r,i)=>i===0?{...goalPayload(r),target:2}:goalPayload(r))});s=await snapshot();assert.equal(s.bosses[0]!.requirements![0]!.progress,2);assert.equal(s.bosses[0]!.requirements![2]!.progress,1);
+ await assert.rejects(reviseBoss({requirements:[...s.bosses[0]!.requirements!.map(goalPayload),{title:'Again',metric:'quest',target:1,quest_id:q.id}]}),/Link each active quest/);
+ await boss({title:'Different boss',requirements:[count()]});const other=(await snapshot()).bosses.find(v=>v.title==='Different boss')!;
+ await assert.rejects(command('revise_boss',{id:other.id,revision:0,accepted:true,title:other.title,description:'',avatar:'knight',period:'weekly',attributes:['Strength'],requirements:[{title:'Completed quest',metric:'quest',target:1,quest_id:q.id}]}),/Link each active quest/);
+ await reviseBoss({id:b.id,revision:1,requirements:[{...goalPayload(s.bosses.find(v=>v.id===b.id)!.requirements![0]!),metric:'checklist',target:1},reading(20)]});
+ const revised=(await snapshot()).bosses.find(v=>v.id===b.id)!;assert.equal(revised.requirements![0]!.progress,0);
+});
+test('expired encounters cannot be revived by editing and unchanged timelines keep their frozen UTC deadline',async()=>{
+ const u=await user();await quest([check()]);await boss({requirements:[count()]});let s=await snapshot();const q=s.quests[0]!;const b=s.bosses[0]!;
+ await command('profile',{display_name:'Editor',timezone:'America/New_York',units:'metric',domains:[]});
+ await reviseQuest({title:'Same deadline'});await reviseBoss({title:'Same deadline'});s=await snapshot();assert.equal(s.quests[0]!.ends_at,q.ends_at);assert.equal(s.bosses[0]!.deadline,b.deadline);
+ await root();await db.query("update public.quest_instances set starts_at=statement_timestamp()-interval '2 days',ends_at=statement_timestamp()-interval '1 second',due_at=statement_timestamp()-interval '1 second' where id=$1",[q.id]);await db.query("update public.boss_attempts set deadline=clock_timestamp()-interval '1 second' where id=$1",[b.id]);await asUser(u);
+ await assert.rejects(reviseQuest({timeline:'monthly'}),/Only active/);await assert.rejects(reviseBoss({period:'yearly'}),/Only active/);
+});
+
+test('active legacy one-off quests can gain structured subparts without losing manual progress',async()=>{
+ const u=await user();const definition=randomUUID();await root();await db.query("insert into public.quest_definitions(id,user_id,title,period,metric,target,attribute,difficulty) values($1,$2,'Legacy goal','one-off','manual',4,'Discipline','medium')",[definition,u]);await asUser(u);
+ let s=await snapshot();const q=s.quests[0]!;await command('quest_progress',{id:q.id,count:2});
+ await command('revise_quest',{id:q.id,revision:0,accepted:true,title:'Legacy goal with subparts',description:'Expanded',timeline:'custom',deadline:new Date(Date.now()+86400000).toISOString(),difficulty:'hard',attribute:'Intellect',objectives:[{id:q.id,title:'Original count',metric:'manual',target:4},check('New subpart')]});
+ s=await snapshot();assert.equal(s.quests[0]!.timeline,'custom');assert.equal(s.quests[0]!.objectives![0]!.progress,2);assert.equal(s.quests[0]!.objectives![1]!.progress,0);assert.equal(s.quests[0]!.reward_xp,50);assert.equal(s.quests[0]!.status,'active');
 });

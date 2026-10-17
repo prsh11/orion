@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { threshold } from '../../src/orion/logic';
-import type { Boss, BossRequirement, Snapshot } from '../../src/orion/types';
+import type { Attribute, Boss, BossRequirement, Kind, QuestMetric, Snapshot } from '../../src/orion/types';
 
 const uid = '10000000-0000-0000-0000-000000000001';
 function fixture(): Snapshot {
@@ -740,10 +740,13 @@ test.describe('profile timezone independent of the device', () => {
         await page.getByRole('button', { name: 'Use current time', exact: true }).click();
         await navigation.getByRole('button', { name: 'Journal', exact: true }).click();
         await navigation.getByRole('button', { name: 'Training', exact: true }).click();
-        await expect(page.getByLabel('Date and time (America/New_York)')).toHaveValue('2026-11-01T01:30:20');
+        await expect(page.getByLabel('Date and time (America/New_York)')).toHaveValue(/^2026-11-01T01:30:/);
         const request = page.waitForRequest(r => r.url().endsWith('orion_command'));
         await page.getByRole('button', { name: 'Save activity', exact: true }).click();
-        expect((await request).postDataJSON().payload.occurred_at).toBe('2026-11-01T06:30:20.000Z');
+        const payload = (await request).postDataJSON().payload;
+        expect(payload.time_mode).toBe('now');
+        expect(Date.parse(payload.occurred_at)).toBeGreaterThanOrEqual(Date.parse(state.server_time));
+        expect(Date.parse(payload.occurred_at)).toBeLessThan(Date.parse(state.server_time) + 60_000);
     });
 
     test('old device-time drafts and profile timezone changes preserve the draft instant', async ({ page }) => {
@@ -1071,7 +1074,9 @@ test('exercise-first gym groups sets, repeats values, restores drafts and celebr
     await page.clock.setFixedTime(new Date('2026-10-16T08:45:00Z'));
     await page.getByRole('button', { name: 'Save activity', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Retry save' })).toBeVisible();
-    expect(bodies[0]!.payload.minutes).toBe(0); expect(bodies[0]!.payload.occurred_at).toBe('2026-10-16T08:45:00.000Z');
+    expect(bodies[0]!.payload.minutes).toBe(0); expect(bodies[0]!.payload.time_mode).toBe('now');
+    expect(Date.parse(String(bodies[0]!.payload.occurred_at))).toBeGreaterThanOrEqual(Date.parse(state.server_time));
+    expect(Date.parse(String(bodies[0]!.payload.occurred_at))).toBeLessThan(Date.parse(state.server_time) + 60_000);
     expect(bodies[0]!.payload.sets).toEqual([{ exercise_id: 'e', reps: 8, kg: 22.5 }, { exercise_id: 'e', reps: 8, kg: 22.5 }]);
     reject = false; await page.clock.setFixedTime(new Date('2026-10-16T08:50:00Z'));
     await page.getByRole('button', { name: 'Retry save', exact: true }).click();
@@ -1096,7 +1101,10 @@ test('running requires actual metrics and uses save time in the profile timezone
     const request = page.waitForRequest(r => r.url().endsWith('orion_command'));
     await page.getByRole('button', { name: 'Save activity', exact: true }).click();
     const payload = (await request).postDataJSON().payload;
-    expect(payload.occurred_at).toBe('2026-10-16T08:30:00.321Z'); expect(payload.metres).toBeCloseTo(3218.688); expect(payload.minutes).toBe(25);
+    expect(payload.time_mode).toBe('now');
+    expect(Date.parse(payload.occurred_at)).toBeGreaterThanOrEqual(Date.parse(state.server_time));
+    expect(Date.parse(payload.occurred_at)).toBeLessThan(Date.parse(state.server_time) + 60_000);
+    expect(payload.metres).toBeCloseTo(3218.688); expect(payload.minutes).toBe(25);
 });
 
 test('gym set controls fit both themes, long exercise names and accessible mobile layouts', async ({ page }) => {
@@ -1313,4 +1321,268 @@ test('abandoning a boss confirms failure, retains history, and cooldown leaves o
  await expect(page.getByRole('button',{name:'Create boss',exact:true})).toBeDisabled();await expect(page.getByRole('region',{name:'Boss details',exact:true})).toContainText('Keep fighting');
  await expect(page.getByRole('checkbox',{name:'Complete Prepare your kit',exact:true})).toBeEnabled();await page.getByRole('combobox',{name:'Encounters',exact:true}).selectOption('history');
  await expect(page.getByRole('region',{name:'Boss details',exact:true})).toContainText('The abandoned gate');await expect(page.getByRole('button',{name:'Abandon boss',exact:true})).toHaveCount(0);
+});
+
+
+test('server clock drives default entries and an excluded run can use its logging time', async ({ page }) => {
+    const state = fixture();
+    state.server_time = '2026-10-17T04:54:42Z';
+    state.profile.timezone = 'Asia/Kolkata';
+    const boss = customBoss('zelda', 'Zelda');
+    boss.accepted_at = '2026-10-17T04:50:26Z';
+    boss.deadline = '2026-10-24T04:50:26Z';
+    boss.requirements = [{ id: 'run', title: '20 km run', metric: 'metres', target: 20000, progress: 0, activity_kind: 'running', attribute: 'Endurance', failed: false }];
+    state.bosses = [boss];
+    Object.assign(state.activities[0]!, { metres: 20000, occurred_at: '2026-10-17T04:46:56Z', recorded_at: '2026-10-17T04:50:55Z' });
+    await page.clock.install({ time: new Date('2026-10-17T04:50:42Z') });
+    await mock(page, state);
+    await page.goto('/');
+    await page.getByRole('navigation').getByRole('button', { name: 'Training', exact: true }).click();
+    await page.getByText('More details', { exact: true }).click();
+    await expect(page.getByLabel('Date and time (Asia/Kolkata)')).toHaveValue(/^2026-10-17T10:24:/);
+    await page.getByRole('button', { name: 'Running', exact: true }).click();
+    await page.getByLabel('Duration (minutes)', { exact: true }).fill('30');
+    await page.getByLabel('Distance (km)', { exact: true }).fill('20');
+    const nowRequest = page.waitForRequest(r => r.url().endsWith('orion_command'));
+    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+    expect((await nowRequest).postDataJSON().payload.time_mode).toBe('now');
+    await page.getByRole('tab', { name: 'History', exact: true }).click();
+    await page.getByRole('button', { name: 'Correct entry', exact: true }).click();
+    await expect(page.getByText('This date falls outside a boss’s tracking window')).toBeVisible();
+    await page.getByRole('button', { name: 'Use logging time', exact: true }).click();
+    await expect(page.getByText('This date falls outside a boss’s tracking window')).toHaveCount(0);
+    const correctionRequest = page.waitForRequest(r => r.url().endsWith('orion_command'));
+    await page.getByRole('button', { name: 'Save correction', exact: true }).click();
+    expect((await correctionRequest).postDataJSON().payload).toMatchObject({ id: 'a', time_mode: 'custom', occurred_at: '2026-10-17T04:50:55Z', metres: 20000 });
+});
+
+test('confirmed activities show each boss’s damage and a portrait victory sequence without replay', async ({ page }) => {
+    const state = fixture(); state.profile.xp = 9000;
+    state.bosses = [customBoss('dragon', 'Zelda, keeper of the distant mountains'), customBoss('specter', 'The spectral gate')];
+    state.bosses[0]!.avatar = 'dragon'; state.bosses[1]!.avatar = 'spectral'; state.bosses[1]!.remaining_health = 50;
+    await page.clock.install({ time: new Date(state.server_time) }); await page.clock.pauseAt(new Date(state.server_time));
+    await mock(page, state);
+    let attempt = 0; let release: () => void = () => {};
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const body = route.request().postDataJSON();
+        await new Promise<void>(resolve => { release = resolve; });
+        attempt++;
+        state.profile.xp += 30;
+        state.events.push({ id: `run-${attempt}`, source: `activity:${body.command_id}`, xp: 30, attributes: { Endurance: 1 }, created_at: state.server_time });
+        state.activities.push({ ...state.activities[0]!, id: body.payload.id, title: 'Mountain run', metres: 20000 });
+        state.bosses.forEach((b, i) => {
+            b.remaining_health = attempt === 1 ? i === 0 ? 50 : 37.5 : 0;
+            if (attempt === 2) {
+                b.status = 'victory'; b.resolved_at = state.server_time; state.profile.xp += 1000;
+                state.events.push({ id: `victory-${b.id}`, source: `boss:${b.id}`, xp: 1000, attributes: { Discipline: 15 }, created_at: state.server_time });
+            }
+        });
+        await route.fulfill({ json: { saved: true } });
+    });
+    await page.goto('/'); await page.getByRole('button', { name: 'Log training', exact: true }).click();
+    await page.getByRole('button', { name: 'Running', exact: true }).click();
+    await page.getByLabel('Duration (minutes)', { exact: true }).fill('30'); await page.getByLabel('Distance (km)', { exact: true }).fill('20');
+    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Saving…', exact: true })).toBeVisible();
+    await expect(page.locator('.battle-feedback')).toHaveCount(0);
+    release();
+    await expect(page.locator('.battle-feedback')).toHaveCount(2);
+    await page.clock.runFor(1600);
+    const report = page.locator('.reward-with-battle');
+    await expect(report).toContainText('50 HP'); await expect(report).toContainText('12.5 HP');
+    await expect(report.getByRole('meter', { name: 'Zelda, keeper of the distant mountains remaining health' })).toHaveAttribute('aria-valuenow', '50');
+    for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.dataset.theme = t, theme);
+        for (const width of [320, 390, 768, 1440]) {
+            await page.setViewportSize({ width, height: 900 });
+            expect(await report.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+            await page.screenshot({ animations: 'disabled', path: `/tmp/orion-battle-damage-${theme}-${width}.png` });
+        }
+    }
+    await page.getByRole('button', { name: 'Dismiss reward', exact: true }).click();
+    await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Saving…', exact: true })).toBeVisible(); release();
+    const dialog = page.getByRole('dialog', { name: 'Victory: Zelda, keeper of the distant mountains', exact: true });
+    await expect(dialog).toBeVisible(); await expect(dialog.locator('.battle-victory')).toHaveCount(2);
+    await page.clock.runFor(1600);
+    await expect(dialog.locator('.battle-hero .battle-enemy img')).toHaveAttribute('src', /dragon/);
+    await expect(dialog.getByRole('meter').first()).toHaveAttribute('aria-valuenow', '0');
+    await expect(dialog).toContainText('Encounter complete'); await expect(dialog).toContainText('+2030');
+    await expect(dialog.getByRole('button', { name: 'Continue', exact: true })).toBeFocused();
+    for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.dataset.theme = t, theme);
+        for (const width of [320, 390, 768, 1440]) {
+            await page.setViewportSize({ width, height: 900 });
+            expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+            // Animated transforms can round the scroll extent by one CSS pixel.
+            expect(await dialog.locator('.milestone-scroll').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+            await page.screenshot({ animations: 'disabled', path: `/tmp/orion-battle-victory-${theme}-${width}.png` });
+        }
+    }
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.screenshot({ animations: 'disabled', path: '/tmp/orion-battle-victory-forced-colors.png' });
+    await page.keyboard.press('Tab'); expect(await page.evaluate(() => Boolean(document.querySelector('dialog')?.contains(document.activeElement)))).toBe(true);
+    await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0);
+    await page.reload(); await expect(page.locator('.battle-feedback')).toHaveCount(0);
+});
+
+for (const effects of ['reduced', 'off', 'system'] as const) {
+    test(`boss defeat retains its portrait, final HP and reward with ${effects} motion`, async ({ page }) => {
+        const state = fixture(); const boss = customBoss('still', 'The stone guardian'); boss.avatar = 'guardian'; boss.remaining_health = 25; state.bosses = [boss];
+        await mock(page, state);
+        if (effects === 'system') await page.emulateMedia({ reducedMotion: 'reduce' });
+        else await page.addInitScript(value => localStorage.setItem('orion-effects', value), effects);
+        await page.route('**/rest/v1/rpc/orion_command', async route => {
+            boss.status = 'victory'; boss.remaining_health = 0; boss.resolved_at = state.server_time; state.profile.xp += 1000;
+            state.events.push({ id: 'still-win', source: 'boss:still', xp: 1000, attributes: {}, created_at: state.server_time });
+            await route.fulfill({ json: { saved: true } });
+        });
+        await page.goto('/'); await page.getByRole('button', { name: 'Log training', exact: true }).click();
+        await page.getByRole('button', { name: 'Running', exact: true }).click();
+        await page.getByLabel('Duration (minutes)', { exact: true }).fill('30'); await page.getByLabel('Distance (km)', { exact: true }).fill('5');
+        await page.getByRole('button', { name: 'Save activity', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'Victory: The stone guardian', exact: true });
+        await expect(dialog).toBeVisible(); await expect(dialog).toContainText('25 HP'); await expect(dialog.getByRole('meter')).toHaveAttribute('aria-valuenow', '0');
+        expect(await dialog.locator('.battle-enemy').evaluate(el => getComputedStyle(el).animationName)).toBe('none');
+        await expect(dialog.locator('.battle-slash')).toBeHidden();
+        await expect(dialog.locator('.battle-enemy img')).toBeVisible(); await expect(dialog.locator('.battle-seal')).toBeVisible();
+        await page.screenshot({ animations: 'disabled', path: `/tmp/orion-battle-victory-${effects}.png` });
+        await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0);
+    });
+}
+
+test('quest editor adds missing subparts, changes rewards, preserves IDs and retries the same revision', async ({ page }) => {
+    const state = missionFixture(); const q = state.quests[0]!; q.id = '20000000-0000-0000-0000-000000000001';
+    q.starts_at = new Date(Date.parse(state.server_time) - 3600000).toISOString();
+    q.ends_at = q.due_at = new Date(Date.parse(state.server_time) + 7 * 86400000).toISOString();
+    state.profile.timezone = 'Asia/Kolkata';
+    await mock(page, state); let uncertain = true;
+    const calls: { command_id: string; action: string; payload: Record<string, unknown> }[] = [];
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const body = route.request().postDataJSON(); calls.push(body);
+        expect(body.action).toBe('revise_quest');
+        if (uncertain) { await route.abort('failed'); return; }
+        const p = body.payload;
+        expect(p).toMatchObject({ id: q.id, revision: 0, accepted: true, title: 'An expanded achievement', timeline: 'monthly', difficulty: 'hard', attribute: 'Connection' });
+        expect(p.objectives).toHaveLength(3); expect(p.objectives[0].id).toBe('o1'); expect(p.objectives[1].id).toBe('o3');
+        expect(p.objectives[1].target).toBe(4); expect(p.objectives[2]).toMatchObject({ title: 'Run the missing distance', metric: 'metres', target: 20000, activity_kind: 'running', attribute: 'Endurance' });
+        const previous = q.objectives!;
+        q.title = p.title; q.timeline = p.timeline; q.difficulty = p.difficulty; q.attribute = p.attribute; q.reward_xp = 600; q.reward_points = 16; q.edit_revision = 1;
+        q.objectives = p.objectives.map((o: { id?: string; title: string; metric: QuestMetric; target: number; activity_kind: Kind | null; attribute: Attribute | null }, i: number) => ({ ...o, id: o.id ?? `added-${i}`, ordinal: i + 1, progress: previous.find(old => old.id === o.id)?.progress ?? 0 }));
+        q.target = 3; q.progress = 0;
+        await route.fulfill({ json: { saved: true } });
+    });
+    await page.goto('/'); await page.getByRole('navigation').getByRole('button', { name: 'Quests', exact: true }).click();
+    const launcher = page.getByRole('button', { name: 'Edit quest', exact: true }); await launcher.click();
+    let dialog = page.getByRole('dialog', { name: 'Edit quest', exact: true });
+    await expect(dialog.getByLabel('Quest title', { exact: true })).toHaveValue(q.title);
+    await dialog.getByLabel('Quest title', { exact: true }).fill('An expanded achievement');
+    await dialog.getByRole('combobox', { name: 'Timeline', exact: true }).selectOption('monthly');
+    await dialog.getByRole('combobox', { name: 'Difficulty', exact: true }).selectOption('hard');
+    await dialog.getByRole('combobox', { name: 'Reward attribute', exact: true }).selectOption('Connection');
+    await dialog.getByRole('button', { name: 'Remove objective 2', exact: true }).click();
+    await dialog.getByLabel('Target', { exact: true }).fill('4');
+    await dialog.getByRole('button', { name: 'Add objective', exact: true }).click();
+    const added = dialog.locator('.objective-draft').last();
+    await added.getByLabel('Objective title', { exact: true }).fill('Run the missing distance');
+    await added.getByRole('combobox', { name: 'Progress from', exact: true }).selectOption('metres');
+    await added.getByLabel('Target (km)', { exact: true }).fill('20');
+    await added.getByRole('combobox', { name: 'Activity filter', exact: true }).selectOption('running');
+    await added.getByRole('combobox', { name: 'Attribute filter', exact: true }).selectOption('Endurance');
+    await page.keyboard.press('Escape'); await expect(launcher).toBeFocused(); await launcher.click();
+    dialog = page.getByRole('dialog', { name: 'Edit quest', exact: true }); await expect(dialog.getByLabel('Quest title', { exact: true })).toHaveValue('An expanded achievement');
+    for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.dataset.theme = t, theme);
+        for (const width of [320, 390, 768, 1440]) {
+            await page.setViewportSize({ width, height: 900 });
+            expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+            await page.screenshot({ animations: 'disabled', path: `/tmp/orion-quest-edit-${theme}-${width}.png` });
+        }
+    }
+    await dialog.getByRole('button', { name: 'Review changes', exact: true }).click(); await expect(dialog).toContainText('600 XP + 16 Connection');
+    await expect(dialog).toContainText('Removing goals or reducing targets can complete this quest'); expect(calls).toHaveLength(0);
+    await dialog.getByRole('button', { name: 'Accept changes and rewards', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'Retry save', exact: true })).toBeVisible(); await expect(dialog.getByRole('button', { name: 'Accept changes and rewards', exact: true })).toBeDisabled();
+    uncertain = false; await dialog.getByRole('button', { name: 'Retry save', exact: true }).click();
+    await expect(dialog).toHaveCount(0); expect(calls).toHaveLength(2); expect(calls[1]).toEqual(calls[0]);
+    await expect(page.getByRole('region', { name: 'Quest details', exact: true })).toContainText('An expanded achievement');
+    await expect(page.getByRole('region', { name: 'Quest details', exact: true })).toContainText('1 / 4'); expect(state.profile.xp).toBe(360);
+    await launcher.click(); await expect(page.getByLabel('Quest title', { exact: true })).toHaveValue('An expanded achievement');
+    await page.emulateMedia({ reducedMotion: 'reduce', forcedColors: 'active' }); await page.screenshot({ path: '/tmp/orion-quest-edit-forced.png' });
+});
+
+test('boss editor revises goals, portraits and stakes while retaining canonical imperial distance', async ({ page }) => {
+    const state = fixture(); state.profile.units = 'imperial';
+    const b = customBoss('20000000-0000-0000-0000-000000000002', 'The unfinished gate');
+    b.requirements = [{ id: 'run-goal', title: 'Run 20 km', metric: 'metres', target: 20000, progress: 5000, activity_kind: 'running', attribute: 'Endurance', failed: false }, { id: 'task-goal', title: 'Finish the plan', metric: 'checklist', target: 1, progress: 0, failed: false }];
+    b.remaining_health = 87.5; state.bosses = [b]; await mock(page, state);
+    let reject = true; let calls = 0;
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const body = route.request().postDataJSON(); calls++; expect(body.action).toBe('revise_boss');
+        if (reject) { await route.fulfill({ status: 400, json: { code: 'P0001', message: 'This boss changed. Reopen the editor to use its latest version' } }); return; }
+        const p = body.payload;
+        expect(p).toMatchObject({ id: b.id, revision: 0, accepted: true, title: 'The complete gate', avatar: 'spectral', period: 'monthly', attributes: ['Intellect'] });
+        expect(p.requirements[0]).toMatchObject({ id: 'run-goal', target: 20000 });
+        expect(p.requirements[2]).toMatchObject({ title: 'A forgotten subpart', metric: 'manual', target: 5 });
+        b.title = p.title; b.avatar = p.avatar; b.period = p.period; b.attributes = p.attributes; b.victory_xp = 3000; b.failure_xp = 750; b.victory_points = 30; b.failure_points = 10; b.edit_revision = 1;
+        b.requirements = p.requirements.map((r: BossRequirement, i: number) => ({ ...r, id: r.id ?? `new-${i}`, progress: r.id === 'run-goal' ? 5000 : 0, failed: false }));
+        b.remaining_health = 100 * (1 - .25 / 3);
+        await route.fulfill({ json: { saved: true } });
+    });
+    await page.goto('/'); await page.getByRole('button', { name: 'View encounter', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit boss', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Edit boss', exact: true });
+    await dialog.getByLabel('Boss name', { exact: true }).fill('The complete gate');
+    await dialog.getByRole('radio', { name: 'Spectral creature', exact: true }).check();
+    await dialog.getByRole('combobox', { name: 'Period', exact: true }).selectOption('monthly');
+    await dialog.getByRole('checkbox', { name: 'Strength', exact: true }).uncheck(); await dialog.getByRole('checkbox', { name: 'Discipline', exact: true }).uncheck(); await dialog.getByRole('checkbox', { name: 'Intellect', exact: true }).check();
+    await dialog.getByRole('button', { name: 'Add requirement', exact: true }).click();
+    const added = dialog.locator('.objective-draft').last(); await added.getByLabel('Requirement title', { exact: true }).fill('A forgotten subpart'); await added.getByRole('combobox', { name: 'Progress from', exact: true }).selectOption('manual'); await added.getByLabel('Target', { exact: true }).fill('5');
+    for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.dataset.theme = t, theme);
+        for (const width of [320, 390, 768, 1440]) {
+            await page.setViewportSize({ width, height: 900 }); expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+            await page.screenshot({ animations: 'disabled', path: `/tmp/orion-boss-edit-${theme}-${width}.png` });
+        }
+    }
+    await dialog.getByRole('button', { name: 'Review changes', exact: true }).click(); await expect(dialog).toContainText('Victory: +3,000 XP, +30 in each of Intellect.'); await expect(dialog).toContainText('Failure: −750 XP, −10 in each of Intellect.');
+    await dialog.getByRole('button', { name: 'Accept changes and stakes', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toContainText('This boss changed');
+    await dialog.getByRole('button', { name: 'Continue editing', exact: true }).click(); await expect(dialog.getByLabel('Boss name', { exact: true })).toBeEnabled();
+    reject = false; await dialog.getByRole('button', { name: 'Review changes', exact: true }).click(); await dialog.getByRole('button', { name: 'Accept changes and stakes', exact: true }).click();
+    await expect(dialog).toHaveCount(0); expect(calls).toBe(2);
+    const detail = page.getByRole('region', { name: 'Boss details', exact: true }); await expect(detail).toContainText('The complete gate'); await expect(detail).toContainText('A forgotten subpart'); await expect(detail).toContainText('92 / 100 HP'); expect(state.profile.xp).toBe(360);
+    await page.getByRole('button', { name: 'Edit boss', exact: true }).click(); await expect(page.getByLabel('Boss name', { exact: true })).toHaveValue('The complete gate');
+});
+
+test('stale quest edits reload the confirmed version and completed quests expose text corrections only', async ({ page }) => {
+    const state = missionFixture(); const q = state.quests[0]!; q.id = '20000000-0000-0000-0000-000000000003';
+    await mock(page, state); let calls = 0;
+    await page.route('**/rest/v1/rpc/orion_command', async route => {
+        const body = route.request().postDataJSON(); calls++;
+        if (calls === 1) {
+            q.title = 'Saved in another tab'; q.edit_revision = 1;
+            await route.fulfill({ status: 400, json: { code: 'P0001', message: 'This quest changed. Reopen the editor to use its latest version' } }); return;
+        }
+        expect(body.payload.revision).toBe(1); q.title = body.payload.title; q.edit_revision = 2;
+        await route.fulfill({ json: { saved: true } });
+    });
+    await page.goto('/'); await page.getByRole('navigation').getByRole('button', { name: 'Quests', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit quest', exact: true }).click();
+    let dialog = page.getByRole('dialog', { name: 'Edit quest', exact: true });
+    await dialog.getByLabel('Quest title', { exact: true }).fill('Unsaved change');
+    await dialog.getByRole('button', { name: 'Review changes', exact: true }).click(); await dialog.getByRole('button', { name: 'Accept changes and rewards', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toContainText('This quest changed');
+    await dialog.getByRole('button', { name: 'Discard draft and reload', exact: true }).click();
+    await expect(dialog).toHaveCount(0); await expect(page.getByRole('region', { name: 'Quest details', exact: true })).toContainText('Saved in another tab');
+    await page.getByRole('button', { name: 'Edit quest', exact: true }).click(); dialog = page.getByRole('dialog', { name: 'Edit quest', exact: true });
+    await expect(dialog.getByLabel('Quest title', { exact: true })).toHaveValue('Saved in another tab');
+    await dialog.getByLabel('Quest title', { exact: true }).fill('Updated from latest version');
+    await dialog.getByRole('button', { name: 'Review changes', exact: true }).click(); await dialog.getByRole('button', { name: 'Accept changes and rewards', exact: true }).click(); await expect(dialog).toHaveCount(0);
+    q.status = 'completed'; q.completed_at = state.server_time;
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.getByRole('combobox', { name: 'Quest status', exact: true }).selectOption('completed');
+    await expect(page.getByRole('region', { name: 'Quest details', exact: true })).toContainText('Updated from latest version');
+    await expect(page.getByRole('button', { name: 'Edit quest', exact: true })).toHaveCount(0);
+    await expect(page.getByText('Correct quest text', { exact: true })).toBeVisible();
 });

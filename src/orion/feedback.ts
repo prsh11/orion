@@ -1,13 +1,17 @@
+import { bossHealth, formatBossDamage } from './bossLogic';
 import { ATTRIBUTES } from './types';
-import type { Attribute, Command, Snapshot } from './types';
+import type { Attribute, BossAvatar, Command, Snapshot } from './types';
 import type { IconName } from './GameIcon';
 import { levelFor, rankFor } from './logic';
 import type { RewardSound } from './sounds';
 export interface RewardItem { id: string; title: string; icon: IconName; sound?: RewardSound; milestone?: boolean }
+export interface BossImpact {
+    id: string; title: string; avatar?: BossAvatar; before: number; after: number; damage: number; defeated: boolean;
+}
 export interface RewardPresentation {
     id: string; returnFocus?: HTMLElement; mode: 'reward' | 'milestone' | 'correction' | 'recap'; items: RewardItem[];
     xp: number; attributes: Partial<Record<Attribute, number>>; summary: string;
-    level: number; rank: string; eventIds: string[];
+    level: number; rank: string; eventIds: string[]; bossImpacts?: BossImpact[];
 }
 export interface FeedbackOrigin { command?: Command; personalRecord?: boolean; personalRecordCommandId?: string; returnFocus?: HTMLElement }
 export function feedbackForUpdate(before: Snapshot | null, after: Snapshot, origin: FeedbackOrigin = {}): RewardPresentation | null {
@@ -17,7 +21,17 @@ export function feedbackForUpdate(before: Snapshot | null, after: Snapshot, orig
     const xp = after.profile.xp - before.profile.xp;
     const attributes: Partial<Record<Attribute, number>> = {};
     for (const attribute of ATTRIBUTES) { const delta = after.profile.attributes[attribute] - before.profile.attributes[attribute]; if (delta) attributes[attribute] = delta; }
-    if (!fresh.length && !xp && !Object.keys(attributes).length) return null;
+    // Compare confirmed snapshots only. Refreshes and retried snapshots never stage attacks.
+    const bossImpacts: BossImpact[] = origin.command ? after.bosses.flatMap(boss => {
+        const previous = before.bosses.find(b => b.id === boss.id);
+        if (!previous || previous.status !== 'active' || !['active', 'victory'].includes(boss.status)) return [];
+        const from = Math.max(0, Math.min(100, previous.remaining_health ?? bossHealth(previous, before)));
+        const to = boss.status === 'victory' ? 0 : Math.max(0, Math.min(100, boss.remaining_health ?? bossHealth(boss, after)));
+        const damage = from - to;
+        const defeated = boss.status === 'victory' && fresh.some(event => event.source === `boss:${boss.id}` && event.xp > 0);
+        return Math.abs(damage) > 0.000001 || defeated ? [{ id: boss.id, title: boss.title, avatar: boss.avatar, before: from, after: to, damage, defeated }] : [];
+    }) : [];
+    if (!fresh.length && !xp && !Object.keys(attributes).length && !bossImpacts.length) return null;
     const items: RewardItem[] = [];
     const milestones: RewardItem[] = [];
     for (const event of fresh) {
@@ -60,7 +74,8 @@ export function feedbackForUpdate(before: Snapshot | null, after: Snapshot, orig
     if (level > oldLevel && earned) milestones.push({ id: `level:${level}`, title: `Level ${level} reached`, icon: 'orbit', sound: 'levelUp', milestone: true });
     if (rank !== rankFor(oldLevel) && level > oldLevel && earned) milestones.push({ id: `rank:${rank}`, title: `Rank ${rank} unlocked`, icon: 'character', sound: 'rankUp', milestone: true });
     const summary = [`${xp > 0 ? '+' : ''}${xp} XP`, ...Object.entries(attributes).map(([a, n]) => `${n > 0 ? '+' : ''}${n} ${a}`)].join(' · ') + ' confirmed';
-    const mode = !origin.command ? 'recap' : milestones.length ? 'milestone' : earned ? 'reward' : 'correction';
+    const dealtDamage = bossImpacts.some(impact => impact.damage > 0);
+    const mode = !origin.command ? 'recap' : milestones.length ? 'milestone' : earned || dealtDamage ? 'reward' : 'correction';
     return { id: fresh.map(e => e.id).join('|') || `${origin.command?.id ?? after.server_time}:delta`, mode,
-        returnFocus: origin.returnFocus, items: [...items, ...milestones], xp, attributes, summary, level, rank, eventIds: fresh.map(e => e.id) };
+        returnFocus: origin.returnFocus, items: [...items, ...milestones], xp, attributes, summary: !xp && !Object.keys(attributes).length && bossImpacts.length ? bossImpacts.map(b => `${b.title}: ${formatBossDamage(b.damage)} HP ${b.damage < 0 ? 'restored' : 'damage'} confirmed`).join('. ') : summary, level, rank, eventIds: fresh.map(e => e.id), ...(bossImpacts.length ? { bossImpacts } : {}) };
 }

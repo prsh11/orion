@@ -22,14 +22,14 @@ export type QuestTimeline = 'daily' | 'weekly' | 'monthly' | 'custom';
 export type QuestStatus = 'active' | 'completed' | 'expired' | 'abandoned';
 export type QuestMetric = Metric | 'checklist';
 export interface QuestObjective { satisfied_at?: string | null; id: string; title: string; ordinal: number; metric: QuestMetric; target: number; progress: number; activity_kind: Kind | null; attribute: Attribute | null }
-export interface Quest extends QuestDefinition { completed_eligible_at?: string | null; timeline?: QuestTimeline | null; description?: string; status?: QuestStatus | null; objectives?: QuestObjective[]; completion_revision: number; applied_xp: number; applied_points: number; completion_history: TodoOutcome[]; definition_id: string; starts_at: string; ends_at: string | null; reward_xp: number; reward_points: number; penalty_xp: number; penalty_points: number; progress: number; completed_at: string | null }
+export interface Quest extends QuestDefinition { edit_revision?: number; revised_at?: string | null; completed_eligible_at?: string | null; timeline?: QuestTimeline | null; description?: string; status?: QuestStatus | null; objectives?: QuestObjective[]; completion_revision: number; applied_xp: number; applied_points: number; completion_history: TodoOutcome[]; definition_id: string; starts_at: string; ends_at: string | null; reward_xp: number; reward_points: number; penalty_xp: number; penalty_points: number; progress: number; completed_at: string | null }
 export interface Objective { metric: Exclude<Metric, 'manual'>; target: number }
 export interface BossTemplate { id: string; title: string; hours: number; attributes: Attribute[]; objectives: Objective[] }
 export type BossPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type BossAvatar = 'dragon' | 'guardian' | 'knight' | 'spectral';
 export interface BossRequirement { id: string; title: string; metric: QuestMetric | 'quest'; target: number; progress: number; activity_kind?: Kind | null; attribute?: Attribute | null; quest_id?: string | null; failed: boolean }
 export interface Boss extends BossTemplate {
-    period?: BossPeriod; description?: string; avatar?: BossAvatar; requirements?: BossRequirement[]; remaining_health?: number;
+    edit_revision?: number; revised_at?: string | null; period?: BossPeriod; description?: string; avatar?: BossAvatar; requirements?: BossRequirement[]; remaining_health?: number;
     victory_xp?: number; failure_xp?: number; victory_points?: number; failure_points?: number;
     template_id: string | null; accepted_at: string; deadline: string; status: 'active' | 'victory' | 'failure'; resolved_at: string | null;
 }

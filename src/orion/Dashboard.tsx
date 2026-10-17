@@ -16,8 +16,8 @@ export default function Dashboard({ navigate }: { navigate: Navigate }) {
     const [clock, setClock] = useState<{ source?: string; elapsed: number }>({ elapsed: 0 });
     const serverTime = data?.server_time;
     useEffect(() => {
-        const start = Date.now();
-        const timer = setInterval(() => setClock({ source: serverTime, elapsed: Date.now() - start }), 30000);
+        const start = performance.now();
+        const timer = setInterval(() => setClock({ source: serverTime, elapsed: performance.now() - start }), 30000);
         return () => clearInterval(timer);
     }, [serverTime]);
     if (!data) return null;

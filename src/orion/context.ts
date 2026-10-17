@@ -5,6 +5,7 @@ export interface OrionState {
     data: Snapshot | null; busy: boolean; error: string | null; pending: Command | null; notices: string[]; presentations: RewardPresentation[];
 }
 export interface OrionContextValue extends OrionState {
+    serverNow: () => number;
     refresh: () => Promise<void>;
     command: (action: string, payload: Record<string, unknown>) => Promise<boolean>;
     retry: () => Promise<void>; dismiss: () => void; dismissPresentation: () => void;

@@ -10,6 +10,7 @@ import QuestDialog from './QuestDialog';
 
 function LegacyQuestCard({ quest: q }: { quest: Quest }) {
     const { command, busy, data, presentations } = useOrion();
+    const [editing, setEditing] = useState(false);
     const reward = { xp: q.reward_xp ?? questReward(q.period, q.difficulty).xp, points: q.reward_points ?? questReward(q.period, q.difficulty).points };
     const expired = q.period !== 'one-off' && q.ends_at !== null && q.ends_at <= (data?.server_time ?? '');
     const overdue = q.due_at && q.due_at <= (data?.server_time ?? '');
@@ -20,6 +21,8 @@ function LegacyQuestCard({ quest: q }: { quest: Quest }) {
         {!q.completed_at && q.due_at && <p className="muted">Late completion: −{Math.ceil(reward.xp / 4)} XP / −1 {q.attribute}; net +{reward.xp - Math.ceil(reward.xp / 4)} XP / +{reward.points - 1} {q.attribute}.</p>}
         {q.metric === 'manual' && !q.completed_at && !q.archived && !expired && <form className="button-row" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); void command('quest_progress', { id: q.id, count: Number(f.get('count')) }); }}>{q.target === 1 ? <input type="hidden" name="count" value="1" /> : <label className="grow">Add progress<input type="number" name="count" min="1" max={q.target} defaultValue="1" required /></label>}<button disabled={busy}>{q.target === 1 ? 'Complete task' : 'Add count'}</button></form>}
         {q.period === 'one-off' && !q.archived && <details><summary>Manage existing quest</summary><p className="muted small">This quest keeps its original accepted goals and reward rules.</p><form onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); void command('edit_quest', { id: q.definition_id, title: f.get('title') }); }}><label>Existing quest title<input name="title" defaultValue={q.title} maxLength={120} required /></label><div className="button-row"><button disabled={busy}>Save title</button>{!q.completed_at && <button type="button" disabled={busy} onClick={() => { void command('archive_quest', { id: q.definition_id }); }}>Archive quest</button>}</div></form></details>}
+        {!q.completed_at && !q.archived && !expired && <button className="text-button" onClick={() => setEditing(true)}>Edit quest</button>}
+        {editing && <QuestDialog edit={q} onClose={() => setEditing(false)} />}
     </article>;
 }
 const statusLabel = { active: 'In progress', completed: 'Completed', expired: 'Expired', abandoned: 'Abandoned' };
@@ -44,13 +47,16 @@ function ObjectiveRow({ objective: o, quest: q }: { objective: QuestObjective; q
 function MissionDossier({ quest: q }: { quest: Quest }) {
     const { data, command, busy, pending } = useOrion();
     const [confirmAbandon, setConfirmAbandon] = useState(false);
+    const [editing, setEditing] = useState(false);
     const status = questStatus(q, data?.server_time ?? '');
     return <article className={`mission-dossier mission-${status}`}><div className="mission-heading"><div className="mission-sigil"><GameIcon name={q.completed_at ? 'star' : q.attribute ?? 'quest'} /></div><div><p className="mission-state">{statusLabel[status]} / {q.difficulty}</p><h3>{q.title}</h3></div></div>
         {q.description && <p className="mission-description">{q.description}</p>}
         <div className="mission-terms"><div><span>Timeline</span><strong>{q.timeline === 'custom' ? 'Custom deadline' : q.timeline}</strong><small>{new Date(q.starts_at).toLocaleString(undefined, { timeZone: data?.profile.timezone })} — {new Date(q.ends_at!).toLocaleString(undefined, { timeZone: data?.profile.timezone })}</small></div><div className="mission-reward"><GameIcon name={q.attribute ?? 'star'} /><span>{status === 'completed' ? 'Reward earned' : 'Completion reward'}</span><strong>{q.reward_xp} XP</strong><small>+{q.reward_points} {q.attribute}</small></div></div>
+        {status === 'active' && <button className="text-button" disabled={busy || Boolean(pending)} onClick={() => setEditing(true)}>Edit quest</button>}
+        {editing && <QuestDialog edit={q} onClose={() => setEditing(false)} />}
         <div className="section-heading objective-heading"><h4>Objective path</h4><span>{questSummary(q)}</span></div><ol className="mission-path">{q.objectives?.map(o => <ObjectiveRow key={o.id} objective={o} quest={q} />)}</ol>
         <p className="muted small">{status === 'active' ? 'Complete every objective before the deadline. Only activities performed and logged after acceptance count. This quest will not repeat.' : status === 'expired' ? 'The deadline passed. No quest reward or penalty was applied.' : status === 'abandoned' ? 'This attempt was closed without a quest reward or penalty.' : 'Achievement secured. This quest is complete and will not repeat.'}</p>
-        <details className="mission-edit"><summary>Correct quest text</summary><form onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); void command('edit_mission', { id: q.id, title: f.get('title'), description: f.get('description') }); }}><label>Quest title<input name="title" defaultValue={q.title} required maxLength={120} /></label><label>Description<textarea name="description" defaultValue={q.description} maxLength={2000} /></label><button disabled={busy || Boolean(pending)}>Save text</button></form></details>
+        {status !== 'active' && <details className="mission-edit"><summary>Correct quest text</summary><form onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); void command('edit_mission', { id: q.id, title: f.get('title'), description: f.get('description') }); }}><label>Quest title<input name="title" defaultValue={q.title} required maxLength={120} /></label><label>Description<textarea name="description" defaultValue={q.description} maxLength={2000} /></label><button disabled={busy || Boolean(pending)}>Save text</button></form></details>}
         {status === 'active' && (confirmAbandon ? <div className="abandon-confirm"><p>Close this attempt without rewards? Your activity records stay saved.</p><div className="button-row"><button disabled={busy || Boolean(pending)} onClick={() => { void command('abandon_quest', { id: q.id }); }}>Confirm abandonment</button><button onClick={() => setConfirmAbandon(false)}>Keep quest</button></div></div> : <button className="text-button" onClick={() => setConfirmAbandon(true)}>Abandon quest</button>)}
     </article>;
 }

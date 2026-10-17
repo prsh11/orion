@@ -1,0 +1,166 @@
+/* Shared RPG menu materials. Geometry stays in App.css; frames and states live here. */
+.page-header,
+.page-content .panel,
+.page-content .character-constellation,
+.game-hud {
+    position:relative;
+    border-color:var(--frame-border);
+    box-shadow:var(--frame-bevel);
+}
+
+.page-header::after,
+.page-content .panel::after {
+    content:'';
+    position:absolute;
+    inset:5px;
+    pointer-events:none;
+    border-radius:2px 8px 2px 8px;
+    background:
+        linear-gradient(var(--frame-bracket),var(--frame-bracket)) top left / 8px 1px,
+        linear-gradient(var(--frame-bracket),var(--frame-bracket)) top left / 1px 8px,
+        linear-gradient(var(--frame-bracket),var(--frame-bracket)) bottom right / 8px 1px,
+        linear-gradient(var(--frame-bracket),var(--frame-bracket)) bottom right / 1px 8px;
+    background-repeat:no-repeat;
+    opacity:.55;
+}
+
+.page-heading { display:flex; align-items:center; gap:16px; }
+.page-heading > div { min-width:0; }
+.page-heading-sigil {
+    flex:0 0 48px;
+    display:grid;
+    place-items:center;
+    width:48px;
+    height:52px;
+    color:var(--cyan);
+    background:var(--field-surface);
+    border:1px solid var(--frame-border);
+    border-radius:var(--control-radius);
+    box-shadow:inset 1px 2px var(--control-shadow),inset -1px -1px var(--frame-highlight);
+}
+.page-heading-sigil .game-icon { width:28px; height:28px; margin:0; }
+.page-header .rpg-art { opacity:.9; }
+
+.sidebar { box-shadow:inset -1px 0 var(--frame-highlight); }
+.sidebar nav button { position:relative; box-shadow:none; }
+.sidebar nav button[aria-current='page'] {
+    border-color:var(--frame-border);
+    background:var(--surface-raised);
+    box-shadow:inset 3px 0 var(--cyan),inset 0 1px var(--frame-highlight),inset 0 -2px var(--control-shadow);
+}
+.sidebar nav button:not([aria-current='page']):hover { background:var(--cyan-wash); }
+.sidebar nav button[aria-current='page']::after { width:5px; height:5px; }
+.player-avatar { border-radius:var(--control-radius); border:1px solid var(--frame-border); box-shadow:var(--frame-bevel); }
+
+.page-tabs { gap:6px; }
+.page-tabs button { border-color:var(--line); background:var(--field-surface); color:var(--muted); }
+.page-tabs button[aria-selected='true'] {
+    color:var(--cyan);
+    background:var(--surface-raised);
+    border-color:var(--control-border);
+    box-shadow:inset 0 -3px var(--cyan),inset 0 1px var(--frame-highlight);
+}
+
+.hud-track { position:relative; height:12px; border-color:var(--control-border); box-shadow:inset 0 1px 2px var(--control-shadow); }
+.hud-track::after,
+.boss-health-track::after {
+    content:'';
+    position:absolute;
+    inset:2px;
+    pointer-events:none;
+    background:repeating-linear-gradient(90deg,transparent 0,transparent calc(10% - 1px),var(--field-surface) calc(10% - 1px),var(--field-surface) 10%);
+}
+.hud-track > span { box-shadow:inset 0 1px var(--frame-highlight); }
+.attribute-tag { border:1px solid color-mix(in srgb,currentColor 30%,transparent); border-radius:var(--control-radius); padding:4px 8px; }
+.attribute-tag[data-status] { text-transform:capitalize; }
+.attribute-tag[data-status='victory'] { color:var(--vitality); }
+.attribute-tag[data-status='failure'] { color:var(--danger); }
+.objective-node { border-radius:var(--control-radius); box-shadow:inset 0 1px var(--frame-highlight); }
+
+.mission-roster-entry { border-radius:var(--control-radius); }
+.mission-roster-entry[aria-current],
+.boss-roster button[aria-current='true'] {
+    background:var(--field-surface);
+    box-shadow:inset 3px 0 var(--roster-accent),inset 0 1px var(--frame-highlight);
+    border-color:var(--roster-accent);
+    outline:0;
+}
+.mission-roster { --roster-accent:var(--violet); }
+.boss-roster { --roster-accent:var(--amber); }
+.mission-roster-entry:focus-visible,
+.boss-roster button:focus-visible { outline:3px solid var(--cyan); outline-offset:3px; }
+.mission-roster-entry strong,
+.boss-roster strong { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-size:1.15rem; line-height:1.2; }
+.mission-roster-entry small,
+.boss-roster small { font-size:.76rem; line-height:1.4; }
+.mission-terms { background:var(--field-surface); padding:16px; border:1px solid var(--line); border-radius:var(--control-radius); }
+.mission-terms strong { font-variant-numeric:tabular-nums; }
+
+.boss-portrait-stage { position:relative; display:grid; place-items:center; align-content:center; align-self:stretch; min-width:0; padding:16px 8px 24px; }
+.boss-portrait-stage::after { content:''; display:block; width:76%; height:8px; margin-top:8px; border-block:1px solid var(--boss-border); background:var(--field-surface); box-shadow:0 3px 0 var(--control-shadow); }
+.boss-portrait-stage .boss-portrait { position:relative; z-index:1; }
+.boss-hero { padding-bottom:20px; border-bottom:1px solid var(--line); }
+.boss-health { --health-color:var(--danger); }
+.boss-health[data-outcome='victory'] { --health-color:var(--vitality); }
+.boss-health .boss-health-label { align-items:baseline; }
+.boss-health-label strong { color:var(--health-color); font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-size:1.35rem; font-variant-numeric:tabular-nums; }
+.boss-health-label > span { color:var(--muted); }
+.boss-health-track { position:relative; margin:8px 0; }
+.boss-health-track meter { display:block; margin:0; height:18px; border-color:var(--control-border); box-shadow:inset 0 1px var(--control-shadow); }
+.boss-health-track meter::-webkit-meter-optimum-value { background:var(--health-color); box-shadow:inset 0 2px var(--frame-highlight); }
+.boss-health-track meter::-moz-meter-bar { background:var(--health-color); }
+.boss-health .boss-health-track { display:block; }
+.boss-requirement .entry-heading h4 { display:flex; align-items:baseline; gap:10px; }
+.boss-requirement h4 .game-icon { width:20px; height:20px; flex:0 0 20px; align-self:center; color:var(--muted); }
+.boss-requirement.is-complete h4 .game-icon,
+.boss-requirement.is-complete .entry-heading > span { color:var(--vitality); }
+.boss-requirement.is-failed h4 .game-icon { color:var(--danger); }
+.boss-requirement > small { display:block; color:var(--muted); margin-top:8px; }
+.boss-terms { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:20px 0; }
+.boss-terms p { display:flex; align-items:flex-start; gap:10px; padding:12px; margin:0; border:1px solid var(--line); border-left:2px solid currentColor; background:var(--field-surface); border-radius:var(--control-radius); }
+.boss-terms .game-icon { flex:0 0 18px; width:18px; height:18px; margin:2px 0 0; }
+.boss-stakes-failure { color:var(--danger); }
+.boss-terms span { min-width:0; overflow-wrap:anywhere; }
+.template-grid .boss-terms { grid-template-columns:1fr; }
+.boss-requirements-heading h3 { margin:0; }
+.boss-avatar-picker label { border-radius:var(--control-radius); background:var(--field-surface); box-shadow:inset 0 1px var(--frame-highlight); }
+.boss-avatar-picker label:has(:checked) { box-shadow:inset 0 -3px var(--cyan),inset 0 1px var(--frame-highlight); }
+.boss-avatar-picker .boss-portrait { margin-bottom:4px; }
+.boss-detail > .danger.text-button { border-color:transparent; }
+.dashboard-boss-entry .boss-health-label strong { font-family:inherit; font-size:1rem; }
+.dashboard-boss-entry .boss-health-track { margin:5px 0; }
+.dashboard-boss-entry .boss-health-track meter { margin:0; height:12px; }
+
+.quest-dialog,
+.exercise-dialog,
+.milestone-dialog { border-color:var(--frame-border); border-radius:var(--frame-radius); }
+.boss-dialog .quest-builder > .section-heading { background:var(--surface-raised); box-shadow:inset 0 1px var(--frame-highlight); }
+.boss-dialog .section-heading h2 { font-size:2rem; margin:0 0 6px; }
+.boss-dialog .section-heading p { color:var(--muted); margin:0; font-size:.9rem; }
+.boss-dialog .section-heading > button { width:44px; height:44px; padding:0; font-size:1.5rem; }
+.boss-acceptance { border-radius:var(--control-radius); background:var(--field-surface); }
+.boss-acceptance .boss-terms p { background:var(--surface); }
+:is(.quest-dialog,.exercise-dialog)[data-effects='reduced'],
+:is(.quest-dialog,.exercise-dialog)[data-effects='off'] { animation:none; transition:none; }
+
+@media(max-width:760px) {
+    .page-heading { gap:10px; }
+    .page-heading-sigil { display:none; }
+    .hud-track { height:10px; }
+    .boss-portrait-stage { max-width:220px; width:100%; justify-self:center; }
+    .boss-dialog .quest-builder > .section-heading { padding:20px; }
+}
+@media(max-width:560px) {
+    .boss-terms { grid-template-columns:1fr; gap:8px; }
+    .mission-terms { padding:12px; gap:12px; }
+}
+@media(forced-colors:active) {
+    .page-header::after,
+    .page-content .panel::after,
+    .hud-track::after,
+    .boss-health-track::after { display:none; }
+    .page-header,.page-content .panel,.game-hud,.page-heading-sigil { border-color:CanvasText; box-shadow:none; }
+    .sidebar nav button[aria-current='page'],.page-tabs button[aria-selected='true'],.boss-roster button[aria-current='true'],.mission-roster-entry[aria-current] { outline:2px solid Highlight; outline-offset:-3px; box-shadow:none; }
+    .attribute-tag,.boss-terms p { border-color:CanvasText; }
+    .boss-avatar-picker label:has(:checked) { outline:2px solid Highlight; outline-offset:-3px; box-shadow:none; }
+}

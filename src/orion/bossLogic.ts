@@ -43,3 +43,9 @@ export function bossDeadline(instant: string, timezone: string, period: BossPeri
     }
     return result;
 }
+
+/** Keep small confirmed hits visible without claiming that zero damage was dealt. */
+export function formatBossDamage(value: number) {
+    const absolute = Math.abs(value);
+    return absolute > 0 && absolute < .01 ? '<0.01' : absolute.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}

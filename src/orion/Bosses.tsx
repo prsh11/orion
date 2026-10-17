@@ -1,22 +1,59 @@
+import { useRef, useState } from 'react';
 import { Panel } from './PageLayout';
-import { useState } from 'react';
 import { useOrion } from './context';
 import GameIcon from './GameIcon';
-import AudioFX from '../audio';
-import { bossActivities, metric, metricLabel } from './logic';
+import BossBuilder from './BossBuilder';
+import { BossHealth, BossTerms } from './BossVitals';
+import BossPortrait, { AvatarPicker } from './BossPortrait';
+import RpgCheckbox from './CompletionControl';
+import { bossHealth, bossStakes, requirementsFor, stakesFor } from './bossLogic';
+import { metricLabel } from './logic';
+import { metricProgress, remainingTime } from './dashboardLogic';
+import type { Boss, BossAvatar, BossRequirement } from './types';
+import type { Navigate } from './navigation';
 
-export default function Bosses() {
-    const { data, command, busy } = useOrion();
-    const [accepting, setAccepting] = useState<string | null>(null);
-    const [abandon, setAbandon] = useState(false);
-    if (!data) return null;
-    const active = data.bosses.find(b => b.status === 'active');
-    return <Panel id="boss-missions" tabIndex={-1} aria-label="Boss missions" className="boss-panel"><h2><GameIcon name="boss" />Boss missions</h2><p className="muted">Optional challenges with real game penalties. Only activities recorded and performed after acceptance, before the deadline, count.</p>
-        {active ? <article><div className="entry-heading"><h3><GameIcon name="boss" />{active.title}</h3><span className="attribute-tag amber">Active</span></div><p>Deadline: {new Date(active.deadline).toLocaleString(undefined, { timeZone: data.profile.timezone })}</p>{active.objectives.map(o => { const n = metric(bossActivities(data.activities, active.accepted_at, active.deadline), o.metric); return <div key={o.metric}><p>{n} / {o.target} {metricLabel[o.metric]}</p><progress max={o.target} value={n} aria-label={`${o.metric}: ${n} of ${o.target}`} /></div>; })}<BossTerms hours={active.hours} attributes={active.attributes} /><button className="danger" disabled={busy} onClick={() => { AudioFX.click(); setAbandon(true); }}>Abandon mission</button>{abandon && <div className="feedback"><p>Abandoning applies the failure penalty immediately and starts a 24-hour cooldown.</p><div className="button-row"><button className="danger" disabled={busy} onClick={() => { void command('abandon_boss', { id: active.id }).then(ok => { if (ok) setAbandon(false); }); }}>Accept failure and abandon</button><button onClick={() => setAbandon(false)}>Keep fighting</button></div></div>}</article>
-        : <div className="template-grid">{data.templates.map(t => <article key={t.id}><GameIcon name="boss" className="boss-crest" /><h3>{t.title}</h3><p>{t.hours === 24 ? '24 hours' : '7 days'} from acceptance</p><ul>{t.objectives.map(o => <li key={o.metric}>{o.target} {metricLabel[o.metric]}</li>)}</ul><BossTerms hours={t.hours} attributes={t.attributes} />{accepting !== t.id ? <button disabled={busy} onClick={() => { AudioFX.click(); setAccepting(t.id); }}>Review acceptance</button> : <div className="feedback"><p>Objectives and deadline are fixed after acceptance. One attempt per {t.hours === 24 ? 'day' : 'Monday-start week'}. Failure starts a 24-hour cooldown.</p><div className="button-row"><button className="boss-button" disabled={busy} onClick={() => { void command('accept_boss', { id: t.id }).then(ok => { if (ok) setAccepting(null); }); }}>Accept mission and penalties</button><button onClick={() => setAccepting(null)}>Cancel</button></div></div>}</article>)}</div>}
-        <details><summary>Mission history</summary>{!data.bosses.some(b => b.status !== 'active') && <p className="muted">Your completed missions will appear here.</p>}{data.bosses.filter(b => b.status !== 'active').map(b => <p key={b.id}>{b.title}: {b.status} · {new Date(b.resolved_at ?? b.deadline).toLocaleDateString(undefined, { timeZone: data.profile.timezone })}</p>)}</details>
-    </Panel>;
+function ManualCount({ boss, requirement }: { boss: Boss; requirement: BossRequirement }) {
+    const { command, busy, pending } = useOrion();
+    const [value, setValue] = useState(String(requirement.progress));
+    return <form className="button-row" onSubmit={e => { e.preventDefault(); void command('set_boss_requirement', { id: boss.id, requirement_id: requirement.id, progress: Number(value) }); }}><label>Count for {requirement.title}<input type="number" required min={0} max={requirement.target} step={1} value={value} disabled={busy || Boolean(pending)} onChange={e => setValue(e.target.value)} /></label><button disabled={busy || Boolean(pending)}>Save count</button></form>;
 }
-function BossTerms({ hours, attributes }: { hours: number; attributes: string[] }) {
-    return <div className="boss-terms"><p>Victory: +{hours === 24 ? 250 : 1000} XP, +{hours === 24 ? 5 : 15} in each of {attributes.join(' and ')}.</p><p>Failure: −{hours === 24 ? 75 : 250} XP, −{hours === 24 ? 2 : 5} in each of {attributes.join(' and ')}.</p></div>;
+function Encounter({ boss, navigate }: { boss: Boss; navigate?: Navigate }) {
+    const { data, command, busy, pending } = useOrion();
+    const [abandon, setAbandon] = useState(false);
+    const [editing, setEditing] = useState(false);
+    const [avatar, setAvatar] = useState<BossAvatar>(boss.avatar ?? 'dragon');
+    if (!data) return null;
+    const requirements = requirementsFor(boss, data);
+    const disabled = busy || Boolean(pending);
+    const active = boss.status === 'active';
+    return <><div className="boss-hero"><BossPortrait avatar={boss.avatar} /><div><span className="attribute-tag amber">{boss.status}</span><h2>{boss.title}</h2>{boss.description && <p>{boss.description}</p>}<p>Deadline: <time dateTime={boss.deadline}>{new Date(boss.deadline).toLocaleString(undefined, { timeZone: data.profile.timezone })}</time><br /><span className="muted">{data.profile.timezone}</span></p><BossHealth boss={boss} /></div></div>
+        <h3>Requirements to defeat {boss.title}</h3><p className="muted">Each requirement removes an equal share of health. Corrections can restore health while the encounter is active.</p>
+        <div className="boss-requirements">{requirements.map(r => <article key={r.id} className={`boss-requirement ${r.failed ? 'is-failed' : ''}`}><div className="entry-heading"><h4>{r.title}</h4><span>{r.failed ? 'Linked quest failed' : r.progress >= r.target ? 'Complete' : 'In progress'}</span></div>{r.metric === 'checklist' && active ? <label className="check-label"><RpgCheckbox checked={r.progress >= 1} disabled={disabled} pending={busy} uncertain={Boolean(pending)} onChange={e => { void command('set_boss_requirement', { id: boss.id, requirement_id: r.id, progress: e.target.checked ? 1 : 0 }); }} />Complete {r.title}</label> : <><p>{r.metric === 'quest' ? `${Math.floor(r.progress * 100)}% of linked quest` : metricProgress(r.metric, r.progress, r.target, data.profile.units === 'imperial')}</p><progress max={r.target} value={r.progress} aria-label={`${r.title} progress`} /></>}
+        {r.metric === 'manual' && active && <ManualCount key={`${r.id}:${r.progress}`} boss={boss} requirement={r} />}
+        {r.metric === 'quest' && r.quest_id && <button className="text-button" onClick={() => navigate?.('Quests', { questId: r.quest_id ?? undefined })}>Open linked quest</button>}
+        {r.activity_kind && <small>Activity: {r.activity_kind}{r.attribute ? ` / ${r.attribute}` : ''}</small>}</article>)}</div>
+        <BossTerms stakes={stakesFor(boss)} attributes={boss.attributes} />
+        {editing ? <form onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); void command('edit_boss', { id: boss.id, title: f.get('title'), description: f.get('description'), avatar }).then(ok => { if (ok) setEditing(false); }); }}><fieldset disabled={disabled}><label>Boss name<input name="title" required maxLength={120} defaultValue={boss.title} /></label><label>Description<textarea name="description" maxLength={2000} defaultValue={boss.description ?? ''} /></label><AvatarPicker value={avatar} onChange={setAvatar} /><div className="button-row"><button>Save appearance</button><button type="button" onClick={() => setEditing(false)}>Cancel</button></div></fieldset></form> : <button className="text-button" onClick={() => setEditing(true)}>Edit name and avatar</button>}
+        {active && (abandon ? <div className="feedback"><p>Abandoning applies the failure penalty immediately and starts a 24-hour cooldown. Other active bosses continue.</p><div className="button-row"><button className="danger" disabled={disabled} onClick={() => { void command('abandon_boss', { id: boss.id }).then(ok => { if (ok) setAbandon(false); }); }}>Accept failure and abandon</button><button onClick={() => setAbandon(false)}>Keep fighting</button></div></div> : <button className="text-button danger" disabled={disabled} onClick={() => setAbandon(true)}>Abandon boss</button>)}
+    </>;
+}
+export default function Bosses({ initialBossId, navigate }: { initialBossId?: string; navigate?: Navigate }) {
+    const { data, command, busy, pending } = useOrion();
+    const [selected, setSelected] = useState(initialBossId ?? '');
+    const [view, setView] = useState<'active' | 'history'>('active');
+    const [creating, setCreating] = useState(false);
+    const [accepting, setAccepting] = useState('');
+    const detail = useRef<HTMLDivElement>(null);
+    if (!data) return null;
+    const bosses = data.bosses.filter(b => view === 'active' ? b.status === 'active' : b.status !== 'active');
+    const current = bosses.find(b => b.id === selected) ?? bosses[0];
+    const failures = data.bosses.filter(b => b.status === 'failure' && b.resolved_at).map(b => Date.parse(b.resolved_at!));
+    const cooldown = failures.length ? new Date(Math.max(...failures) + 86400000) : null;
+    const cooling = cooldown && cooldown.getTime() > Date.parse(data.server_time);
+    return <><Panel id="boss-missions" tabIndex={-1} className="boss-page" aria-label="Boss missions"><header className="section-heading"><h2><GameIcon name="boss" />Boss encounters</h2><button className="boss-button" disabled={Boolean(cooling) || busy || Boolean(pending)} onClick={() => setCreating(true)}>Create boss</button></header>
+        {cooling && <p role="status">New encounters unlock {cooldown.toLocaleString(undefined, { timeZone: data.profile.timezone })}. Your other active bosses continue.</p>}
+        <label className="boss-view-filter">Encounters<select value={view} onChange={e => setView(e.target.value as typeof view)}><option value="active">Active bosses ({data.bosses.filter(b => b.status === 'active').length})</option><option value="history">Encounter history</option></select></label>
+        {bosses.length ? <div className="boss-layout"><nav className="boss-roster" aria-label="Boss roster">{bosses.map(b => { const requirements = requirementsFor(b, data); return <button key={b.id} aria-current={current?.id === b.id ? 'true' : undefined} onClick={() => { setSelected(b.id); requestAnimationFrame(() => { detail.current?.focus({ preventScroll: true }); if (matchMedia('(max-width: 760px)').matches) detail.current?.scrollIntoView({ block: 'start', behavior: 'instant' }); }); }}><BossPortrait avatar={b.avatar} /><span><strong>{b.title}</strong><small>{bossHealth(b, data)} HP · {requirements.filter(r => r.progress >= r.target && !r.failed).length} / {requirements.length} complete</small><small>{b.status === 'active' ? remainingTime(b.deadline, Date.parse(data.server_time)) : b.status}</small><small>{new Date(b.deadline).toLocaleString(undefined, { timeZone: data.profile.timezone })}</small></span></button>; })}</nav><div className="boss-detail" id="boss-detail" ref={detail} tabIndex={-1} role="region" aria-label="Boss details">{current && <Encounter key={current.id} boss={current} navigate={navigate} />}</div></div> : <div className="journal-empty"><BossPortrait avatar="guardian" /><h3>{view === 'active' ? 'Choose what stands in your way' : 'Your encounters will stay here'}</h3><p>{view === 'active' ? 'Create a named boss with tasks, activity goals, and quests. Accept its deadline and stakes before you begin.' : 'Victories and failures keep their final progress and stakes.'}</p></div>}
+        <details className="boss-templates"><summary>Classic encounters</summary><div className="template-grid">{data.templates.map(t => <article key={t.id}><h3>{t.title}</h3><p>{t.hours === 24 ? '24 hours' : '7 days'} from acceptance</p><ul>{t.objectives.map(o => <li key={o.metric}>{o.target} {metricLabel[o.metric]}</li>)}</ul><BossTerms stakes={bossStakes[t.hours === 24 ? 'daily' : 'weekly']} attributes={t.attributes} />{accepting === t.id ? <div className="feedback"><p>Requirements, deadline and stakes are fixed. One attempt per {t.hours === 24 ? 'day' : 'Monday-start week'}. Failure starts a 24-hour cooldown.</p><button disabled={busy || Boolean(pending) || Boolean(cooling)} onClick={() => { void command('accept_boss', { id: t.id }).then(ok => { if (ok) setAccepting(''); }); }}>Accept mission and penalties</button><button onClick={() => setAccepting('')}>Cancel</button></div> : <button disabled={busy || Boolean(pending) || Boolean(cooling)} onClick={() => setAccepting(t.id)}>Review acceptance</button>}</article>)}</div></details>
+    </Panel>{creating && <BossBuilder key={`${data.profile.id}:${data.profile.units}`} onClose={() => setCreating(false)} />}</>;
 }

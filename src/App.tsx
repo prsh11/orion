@@ -26,8 +26,8 @@ import { useExperience } from './orion/experience';
 import AudioFX from './audio';
 import './App.css';
 
-const tabs = ['Dashboard', 'Todos', 'Quests', 'Training', 'Journal', 'Character', 'Settings'] as const;
-const tabScenes: Record<Tab, RpgScene> = { Dashboard: 'dashboard', Todos: 'journal', Quests: 'quest', Training: 'training', Journal: 'journal', Character: 'character', Settings: 'settings' };
+const tabs = ['Dashboard', 'Todos', 'Quests', 'Bosses', 'Training', 'Journal', 'Character', 'Settings'] as const;
+const tabScenes: Record<Tab, RpgScene> = { Dashboard: 'dashboard', Todos: 'journal', Quests: 'quest', Bosses: 'quest', Training: 'training', Journal: 'journal', Character: 'character', Settings: 'settings' };
 function Character() {
     const { data, presentations } = useOrion();
     if (!data) return null;
@@ -54,12 +54,12 @@ function MainNavigation({ tab, navigate }: { tab: Tab; navigate: (tab: Tab) => v
 function System() {
     const { data, busy, error, pending, retry, refresh, notices, dismiss } = useOrion();
     const [tab, setTab] = useState<Tab>('Dashboard');
-    const [sections, setSections] = useState<Record<Tab, string>>({ Dashboard: '', Todos: 'today', Quests: 'journal', Training: 'log', Journal: 'entry', Character: 'overview', Settings: 'preferences' });
+    const [sections, setSections] = useState<Record<Tab, string>>({ Dashboard: '', Todos: 'today', Quests: 'journal', Bosses: '', Training: 'log', Journal: 'entry', Character: 'overview', Settings: 'preferences' });
     const selectSection = (page: Tab, value: string) => setSections(previous => ({ ...previous, [page]: value }));
     const [destination, setDestination] = useState<NavigationTarget>();
     useEffect(() => {
         if (!destination) return;
-        const id = destination.questId ? 'quest-detail' : destination.section === 'todos' ? 'daily-todos' : destination.section === 'bosses' ? 'boss-missions' : destination.section === 'log' ? 'training-entry' : destination.section === 'entry' ? 'journal-entry' : 'daily-rhythm';
+        const id = destination.bossId ? 'boss-detail' : destination.questId ? 'quest-detail' : destination.section === 'todos' ? 'daily-todos' : destination.section === 'bosses' ? 'boss-missions' : destination.section === 'log' ? 'training-entry' : destination.section === 'entry' ? 'journal-entry' : 'daily-rhythm';
         const frame = requestAnimationFrame(() => { const section = document.getElementById(id) ?? document.getElementById('main-content'); section?.focus({ preventScroll: true }); section?.scrollIntoView({ block: 'start', behavior: 'instant' }); });
         return () => cancelAnimationFrame(frame);
     }, [tab, destination]);
@@ -67,7 +67,7 @@ function System() {
     const navigate = (next: Tab, target?: NavigationTarget) => {
         if (next !== tab) AudioFX.click();
         if (target?.questId) selectSection('Quests', 'journal');
-        else if (target?.section === 'bosses') selectSection('Quests', 'bosses');
+        else if (target?.section === 'bosses') next = 'Bosses';
         else if (target?.section === 'todos') selectSection('Todos', 'today');
         else if (target?.section === 'daily') selectSection('Journal', 'daily');
         else if (target?.section === 'log') selectSection('Training', 'log');
@@ -75,7 +75,7 @@ function System() {
         setDestination(target); setTab(next); if (!target) window.scrollTo({ top: 0, behavior: 'instant' }); void refresh();
     };
     const level = levelFor(data?.profile.xp ?? 0);
-    const descriptions: Record<Tab, string> = { Dashboard: data ? new Date(data.server_time).toLocaleDateString(undefined, { timeZone: data.profile.timezone, weekday: 'long', month: 'short', day: 'numeric' }) : '', Todos: 'Make room for what matters today.', Quests: 'Your goals and boss encounters.', Training: 'Record your movement and strength.', Journal: 'Read, focus, connect, and recover.', Character: 'Your growth, stats, and achievements.', Settings: 'Your preferences and private data.' };
+    const descriptions: Record<Tab, string> = { Dashboard: data ? new Date(data.server_time).toLocaleDateString(undefined, { timeZone: data.profile.timezone, weekday: 'long', month: 'short', day: 'numeric' }) : '', Todos: 'Make room for what matters today.', Quests: 'Your goals and achievements.', Bosses: 'Name your challenge. Accept the stakes.', Training: 'Record your movement and strength.', Journal: 'Read, focus, connect, and recover.', Character: 'Your growth, stats, and achievements.', Settings: 'Your preferences and private data.' };
     const subsection = (page: Tab, contents: Record<string, ReactNode>) => <Subsections label={`${page} sections`} value={sections[page]} onChange={value => selectSection(page, value)} items={pageSections[page].map(item => ({ ...item, content: contents[item.id] }))} />;
     return <div className={`app view-${tab.toLowerCase()}`} data-effects={effectiveEffects}><a className="skip-link" href="#main-content">Skip to content</a>
         <aside className="sidebar"><a className="wordmark" href="/" aria-label="Orion home"><OrionMark />orion</a><p className="sidebar-caption">Your everyday RPG</p><MainNavigation tab={tab} navigate={navigate} /><div className="sidebar-bottom"><span className="status-dot" />Private player account<p>Every action adds up.</p></div></aside>
@@ -89,7 +89,8 @@ function System() {
                         <div className="page-content">
                         {tab === 'Dashboard' && <Dashboard navigate={navigate} />}
                         {tab === 'Todos' && <Todos selectedView={sections.Todos as TodoView} onViewChange={value => selectSection('Todos', value)} />}
-                        {tab === 'Quests' && subsection('Quests', { journal: <Quests initialQuestId={destination?.questId} />, bosses: <Bosses /> })}
+                        {tab === 'Quests' && <Quests key={destination?.questId} initialQuestId={destination?.questId} />}
+                        {tab === 'Bosses' && <Bosses key={destination?.bossId} initialBossId={destination?.bossId} navigate={navigate} />}
                         {tab === 'Training' && subsection('Training', { log: <ActivityForm key={`${data.profile.units}:${data.profile.timezone}`} />, history: <ActivityHistory />, exercises: <ExerciseLibrary /> })}
                         {tab === 'Journal' && subsection('Journal', { entry: <ActivityForm key={`${data.profile.units}:${data.profile.timezone}`} journal />, daily: <DailyCare />, history: <ActivityHistory journal /> })}
                         {tab === 'Character' && subsection('Character', { overview: <div className="character-overview"><Character /><CharacterConstellation /></div>, analytics: <Analytics />, progression: <Panel><h2>Progression history</h2>{!data.events.length && <p className="empty">Your first action starts the story.</p>}<ul className="event-list">{data.events.map(e => <li key={e.id}><time>{new Date(e.created_at).toLocaleDateString(undefined, { timeZone: data.profile.timezone })}</time><span>{e.source.startsWith('todo-undo:') ? 'Todo unchecked' : e.source.startsWith('todo:') ? 'Todo completed' : e.source.startsWith('activity') ? 'Activity reward' : e.source.startsWith('quest') ? 'Quest completed' : e.source.startsWith('boss') ? 'Boss result' : e.source.startsWith('legacy') ? 'Legacy import' : e.source.startsWith('correction') ? 'Activity correction' : 'Daily completion'}</span><strong>{e.xp >= 0 ? '+' : ''}{e.xp} XP</strong><span>{Object.entries(e.attributes).filter(([, n]) => n !== 0).map(([a, n]) => `${n > 0 ? '+' : ''}${n} ${a}`).join(', ')}</span></li>)}</ul></Panel> })}

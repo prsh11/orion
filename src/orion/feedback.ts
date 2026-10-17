@@ -23,7 +23,7 @@ export function feedbackForUpdate(before: Snapshot | null, after: Snapshot, orig
     for (const event of fresh) {
         const source = event.source; const id = source.split(':')[1];
         if (source.startsWith('boss:')) {
-            const item: RewardItem = { id: event.id, title: event.xp > 0 ? `Victory: ${after.bosses.find(b => b.id === id)?.title ?? 'Boss defeated'}` : 'Boss mission failed', icon: 'boss', sound: event.xp > 0 ? 'bossVictory' : 'bossFailure', milestone: event.xp > 0 };
+            const item: RewardItem = { id: event.id, title: event.xp > 0 ? `Victory: ${after.bosses.find(b => b.id === id)?.title ?? 'Boss defeated'}` : `Failed: ${after.bosses.find(b => b.id === id)?.title ?? 'Boss mission'}`, icon: 'boss', sound: event.xp > 0 ? 'bossVictory' : 'bossFailure', milestone: event.xp > 0 };
             (item.milestone ? milestones : items).push(item);
         } else if (source.startsWith('quest:') && event.xp > 0) {
             const quest = after.quests.find(q => q.id === id); const late = Boolean(quest?.penalty_xp);

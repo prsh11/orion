@@ -121,3 +121,20 @@ test('PostgreSQL: concurrent equal gym PRs grant one bonus and retries keep the 
         assert.equal((await pool.query('select xp from public.profiles where id=$1', [user])).rows[0].xp, 40);
     } finally { await pool.query('delete from auth.users where id=$1', [user]); await pool.end(); }
 });
+
+test('PostgreSQL: concurrent custom boss victory and settlement award once', { skip: !process.env.ORION_TEST_DATABASE_URL }, async () => {
+ const pool=new pg.Pool({connectionString:process.env.ORION_TEST_DATABASE_URL,max:4}); const user=randomUUID();
+ const run=async(id:string,action:string,payload:Record<string,unknown>)=>{
+  const c=await pool.connect(); try { await c.query('begin'); await c.query("select set_config('request.jwt.claim.sub',$1,true)",[user]); await c.query('set local role authenticated'); await c.query('select public.orion_command($1,$2,$3::jsonb)',[id,action,JSON.stringify(payload)]); await c.query('commit'); } catch(error){await c.query('rollback');throw error;} finally{c.release();}
+ };
+ try {
+  await pool.query('insert into auth.users(id) values($1)',[user]);
+  const bid=randomUUID();
+  await run(randomUUID(),'create_boss',{id:bid,title:'Concurrent boss',avatar:'dragon',period:'daily',attributes:['Strength'],accepted:true,requirements:[{title:'Finish',metric:'checklist',target:1}]});
+  const r=(await pool.query('select requirements from public.boss_attempts where id=$1',[bid])).rows[0].requirements[0]; const cid=randomUUID(); const payload={id:bid,requirement_id:r.id,progress:1};
+  await Promise.all([run(cid,'set_boss_requirement',payload),run(cid,'set_boss_requirement',payload),pool.query('select public.orion_expire_bosses()')]);
+  assert.equal((await pool.query('select xp from public.profiles where id=$1',[user])).rows[0].xp,250);
+  assert.equal((await pool.query("select count(*)::int n from public.progression_events where user_id=$1 and source=$2",[user,`boss:${bid}`])).rows[0].n,1);
+  assert.equal((await pool.query('select status from public.boss_attempts where id=$1',[bid])).rows[0].status,'victory');
+ } finally { await pool.query('delete from auth.users where id=$1',[user]); await pool.end(); }
+});

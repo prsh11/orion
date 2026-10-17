@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { threshold } from '../../src/orion/logic';
-import type { Snapshot } from '../../src/orion/types';
+import type { Boss, BossRequirement, Snapshot } from '../../src/orion/types';
 
 const uid = '10000000-0000-0000-0000-000000000001';
 function fixture(): Snapshot {
@@ -28,7 +28,7 @@ async function mock(page: Page, state = fixture()) {
         localStorage.setItem('sb-127-auth-token', JSON.stringify({ access_token: token, refresh_token: 'test-refresh', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: uid, email: 'ari@example.test', aud: 'authenticated', role: 'authenticated' } }));
     }, { uid });
 }
-test('all seven screens fit mobile through desktop in both themes', async ({ page }) => {
+test('all eight screens fit mobile through desktop in both themes', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     await mock(page); await page.goto('/');
@@ -37,7 +37,7 @@ test('all seven screens fit mobile through desktop in both themes', async ({ pag
         await page.evaluate(t => document.documentElement.dataset.theme = t, theme);
         for (const width of [320, 390, 768, 1440]) {
             await page.setViewportSize({ width, height: 1000 });
-            for (const tab of ['Dashboard', 'Todos', 'Quests', 'Training', 'Journal', 'Character', 'Settings']) {
+            for (const tab of ['Dashboard', 'Todos', 'Quests', 'Bosses', 'Training', 'Journal', 'Character', 'Settings']) {
                 await page.getByRole('navigation').getByRole('button', { name: tab, exact: true }).click();
                 await expect(page.locator('main')).toBeVisible();
                 const artwork = page.locator('.rpg-art img');
@@ -100,7 +100,8 @@ test('uncertain save retries the same command ID; rejected saves can be correcte
 });
 test('boss acceptance displays exact stakes and requires explicit confirmation', async ({ page }) => {
     await mock(page); await page.goto('/'); await page.getByRole('navigation').getByRole('button', { name: 'Quests', exact: true }).click();
-    await page.getByRole('tab', { name: 'Boss encounters', exact: true }).click();
+    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Bosses', exact: true }).click();
+    await page.getByText('Classic encounters', { exact: true }).click();
     await expect(page.getByText('Victory: +250 XP, +5 in each of Strength and Discipline.')).toBeVisible();
     await expect(page.getByText('Failure: −75 XP, −2 in each of Strength and Discipline.')).toBeVisible();
     await page.getByRole('button', { name: 'Review acceptance' }).click();
@@ -128,7 +129,7 @@ test('active boss and long player content fit the smallest viewport', async ({ p
     state.habits[0]!.name = 'H'.repeat(100);
     state.bosses = [{ ...state.templates[0]!, id: 'boss', template_id: 'first-gate', accepted_at: new Date(Date.now() - 1000).toISOString(), deadline: new Date(Date.now() + 1000 * 86400).toISOString(), resolved_at: null, status: 'active' }];
     await mock(page, state); await page.setViewportSize({ width: 320, height: 900 }); await page.goto('/');
-    for (const tab of ['Dashboard', 'Todos', 'Quests', 'Training', 'Journal', 'Character', 'Settings']) {
+    for (const tab of ['Dashboard', 'Todos', 'Quests', 'Bosses', 'Training', 'Journal', 'Character', 'Settings']) {
         await page.getByRole('navigation').getByRole('button', { name: tab, exact: true }).click();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), tab).toBe(true);
     }
@@ -797,7 +798,7 @@ test('mission dashboard bounds its lists, exposes real progress and navigates to
     await expect(page.getByRole('region', { name: 'Quest details', exact: true })).toContainText('Expedition 1');
     await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Dashboard', exact: true }).click();
     await page.getByRole('button', { name: 'View encounter', exact: true }).click();
-    await expect(page.getByRole('region', { name: 'Boss missions', exact: true })).toBeFocused();
+    await expect(page.getByRole('region', { name: 'Boss details', exact: true })).toBeFocused();
     await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Dashboard', exact: true }).click();
     await page.getByRole('button', { name: 'Manage todos', exact: true }).click();
     await expect(page.getByRole('region', { name: 'Daily todos', exact: true })).toBeFocused();
@@ -962,7 +963,7 @@ test('all pages and subsections share header geometry, aligned panels and neutra
         for (const width of [320, 390, 768, 1440]) {
             await page.setViewportSize({ width, height: 1000 });
             let baseline: { x: number; y: number; width: number; height: number } | undefined;
-            for (const name of ['Dashboard', 'Todos', 'Quests', 'Training', 'Journal', 'Character', 'Settings']) {
+            for (const name of ['Dashboard', 'Todos', 'Quests', 'Bosses', 'Training', 'Journal', 'Character', 'Settings']) {
                 await navigation.getByRole('button', { name, exact: true }).click();
                 const header = page.locator('.page-header');
                 const bounds = await header.boundingBox();
@@ -1187,4 +1188,129 @@ test('exercise popup fits both themes and small screens with long names, reduced
     await popup.getByLabel('Search exercises').fill('incline');
     await page.keyboard.press('Tab'); await page.keyboard.press('Enter');
     await expect(popup).toHaveCount(0); await expect(page.getByLabel('Reps', { exact: true })).toBeFocused();
+});
+
+function customBoss(id = 'custom-boss', title = 'The stone wall'): Boss {
+    return { id, title, template_id: '', hours: 168, period: 'weekly', avatar: 'guardian', description: 'A challenge worth finishing.',
+        attributes: ['Strength', 'Discipline'], objectives: [], requirements: [
+            { id: 'prepare', title: 'Prepare your kit', metric: 'checklist', target: 1, progress: 0, failed: false },
+            { id: 'count', title: 'Practice sessions', metric: 'manual', target: 4, progress: 0, failed: false },
+        ], remaining_health: 100, victory_xp: 1000, failure_xp: 250, victory_points: 15, failure_points: 5,
+        accepted_at: new Date(Date.now()-1000).toISOString(), deadline: new Date(Date.now()+86400000*7).toISOString(), resolved_at: null, status: 'active' };
+}
+test('custom boss creation preserves drafts, avatars, frozen acceptance and retry IDs', async ({ page }) => {
+    const state=fixture(); await mock(page,state); const calls: {command_id:string; action:string; payload:Record<string,unknown>}[]=[]; let uncertain=true;
+    await page.route('**/rest/v1/rpc/orion_command', async route=>{
+        const body=route.request().postDataJSON(); calls.push(body);
+        if(uncertain){await route.abort('failed');return;}
+        const p=body.payload;
+        state.bosses.push({...customBoss(p.id,p.title),period:p.period,avatar:p.avatar,attributes:p.attributes,
+            requirements:p.requirements.map((r:BossRequirement,i:number)=>({...r,id:`req-${i}`,progress:0,failed:false}))});
+        await route.fulfill({json:{saved:true}});
+    });
+    await page.goto('/'); await page.getByRole('navigation').getByRole('button',{name:'Bosses',exact:true}).click();
+    const launcher=page.getByRole('button',{name:'Create boss',exact:true}); await launcher.click();
+    let dialog=page.getByRole('dialog',{name:'Create boss',exact:true});
+    await dialog.getByLabel('Boss name',{exact:true}).fill('Defeat the backlog');
+    await dialog.getByRole('radio',{name:'Spectral creature',exact:true}).check();
+    await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(launcher).toBeFocused();
+    await launcher.click(); dialog=page.getByRole('dialog',{name:'Create boss',exact:true});
+    await expect(dialog.getByLabel('Boss name',{exact:true})).toHaveValue('Defeat the backlog');
+    await expect(dialog.getByRole('radio',{name:'Spectral creature',exact:true})).toBeChecked();
+    await dialog.getByRole('combobox',{name:'Period',exact:true}).selectOption('monthly');
+    await dialog.getByRole('checkbox',{name:'Intellect',exact:true}).check();
+    await dialog.getByLabel('Requirement title',{exact:true}).fill('Clear the desk');
+    await dialog.getByRole('button',{name:'Add requirement',exact:true}).click();
+    let rows=dialog.locator('.objective-draft');
+    await rows.nth(1).getByLabel('Progress from').selectOption('manual'); await rows.nth(1).getByLabel('Requirement title').fill('Practice'); await rows.nth(1).getByLabel('Target').fill('3');
+    await dialog.getByRole('button',{name:'Add requirement',exact:true}).click();
+    await rows.nth(2).getByLabel('Progress from').selectOption('minutes'); await rows.nth(2).getByLabel('Requirement title').fill('Read'); await rows.nth(2).getByLabel('Target').fill('30'); await rows.nth(2).getByLabel('Activity filter').selectOption('reading');
+    await dialog.getByRole('button',{name:'Add requirement',exact:true}).click();
+    await rows.nth(3).getByLabel('Progress from').selectOption('quest'); await rows.nth(3).getByRole('combobox',{name:'Active quest',exact:true}).selectOption('q');
+    await dialog.getByRole('button',{name:'Review acceptance',exact:true}).click();
+    await expect(dialog.locator('.boss-acceptance')).toContainText('Victory: +3,000 XP, +30 in each of Discipline and Intellect.');
+    await expect(dialog.locator('.boss-acceptance')).toContainText('Failure: −750 XP, −10');
+    expect(calls.length).toBe(0);
+    await dialog.getByRole('button',{name:'Accept boss and penalties',exact:true}).click();
+    await expect(dialog.getByRole('button',{name:'Retry save',exact:true})).toBeVisible();
+    uncertain=false; await dialog.getByRole('button',{name:'Retry save',exact:true}).click();
+    await expect(page.getByRole('dialog',{name:'Boss accepted',exact:true})).toBeVisible();
+    expect(calls).toHaveLength(2); expect(calls[1]).toEqual(calls[0]);
+    expect(calls[0]!.payload).toMatchObject({accepted:true,avatar:'spectral',period:'monthly',attributes:['Discipline','Intellect']});
+    await page.getByRole('button',{name:'View bosses',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'Defeat the backlog',exact:true})).toBeVisible();
+});
+test('multiple boss dossiers use confirmed HP, manual corrections and named victory feedback',async({page})=>{
+ const state=fixture(); state.bosses=[customBoss(),customBoss('second','The second gate')]; await mock(page,state);
+ await page.route('**/rest/v1/rpc/orion_command',async route=>{
+  const p=route.request().postDataJSON().payload; const b=state.bosses.find(b=>b.id===p.id)!; const r=b.requirements!.find(r=>r.id===p.requirement_id)!; r.progress=p.progress;
+  b.remaining_health=100*(1-b.requirements!.reduce((n,r)=>n+r.progress/r.target,0)/b.requirements!.length);
+  if(b.remaining_health===0){b.status='victory';b.resolved_at=new Date().toISOString();state.profile.xp+=1000;state.events.push({id:'boss-result',source:`boss:${b.id}`,xp:1000,attributes:{Strength:15,Discipline:15},created_at:b.resolved_at});}
+  await route.fulfill({json:{saved:true}});
+ });
+ await page.goto('/'); await expect(page.locator('.dashboard-boss-entry')).toHaveCount(2);
+ await page.locator('.dashboard-boss-entry').nth(1).getByRole('button',{name:'View encounter',exact:true}).click();
+ let detail=page.getByRole('region',{name:'Boss details',exact:true}); await expect(detail).toBeFocused(); await expect(detail.getByRole('heading',{name:'The second gate',exact:true})).toBeVisible();
+ await expect(detail.getByText('100 / 100 HP',{exact:true})).toBeVisible();
+ const checkbox=detail.getByRole('checkbox',{name:'Complete Prepare your kit',exact:true});
+ await checkbox.click(); await expect(detail.getByText('50 / 100 HP',{exact:true})).toBeVisible();
+ await detail.getByLabel('Count for Practice sessions').fill('2'); await detail.getByRole('button',{name:'Save count',exact:true}).click(); await expect(detail.getByText('25 / 100 HP',{exact:true})).toBeVisible();
+ await checkbox.click(); await expect(detail.getByText('75 / 100 HP',{exact:true})).toBeVisible();
+ await detail.getByLabel('Count for Practice sessions').fill('4'); await detail.getByRole('button',{name:'Save count',exact:true}).click(); await checkbox.click();
+ await expect(page.getByRole('dialog')).toContainText('Victory: The second gate'); await page.getByRole('button',{name:'Continue',exact:true}).click();
+ await page.getByRole('combobox',{name:'Encounters',exact:true}).selectOption('history'); detail=page.getByRole('region',{name:'Boss details',exact:true});
+ await expect(detail.getByText('0 / 100 HP',{exact:true})).toBeVisible(); await expect(detail.getByRole('button',{name:'Save count',exact:true})).toHaveCount(0);
+ await page.reload(); await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+test('boss dossier and avatar popup fit both themes with long names and accessible controls',async({page})=>{
+ const state=fixture(); state.bosses=[customBoss('long','The guardian '+ 'of a very long encounter '.repeat(4))]; await mock(page,state); await page.goto('/');
+ await page.getByRole('navigation').getByRole('button',{name:'Bosses',exact:true}).click();
+ for(const theme of ['dark','light']){
+  await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
+  for(const width of [320,390,768,1440]){
+   await page.setViewportSize({width,height:1000}); expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+   await page.screenshot({path:`/tmp/orion-boss-${theme}-${width}.png`,fullPage:true});
+   await page.getByRole('button',{name:'Create boss',exact:true}).click();
+   const dialog=page.getByRole('dialog',{name:'Create boss',exact:true}); await expect(dialog).toBeVisible();
+   expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+   await page.screenshot({path:`/tmp/orion-boss-forge-${theme}-${width}.png`,fullPage:true});
+   await page.keyboard.press('Escape');
+  }
+ }
+ await page.emulateMedia({reducedMotion:'reduce',forcedColors:'active'});
+ await page.getByRole('button',{name:'Create boss',exact:true}).click(); const dialog=page.getByRole('dialog',{name:'Create boss',exact:true});
+ const avatar=dialog.getByRole('radio',{name:'Armored knight',exact:true}); await avatar.focus(); await page.keyboard.press('Space'); await expect(avatar).toBeChecked();
+ await page.screenshot({path:'/tmp/orion-boss-forced-colors.png',fullPage:true});
+ await page.keyboard.press('Escape'); const check=page.getByRole('checkbox',{name:'Complete Prepare your kit',exact:true}); await check.focus(); await expect(check).toBeFocused();
+});
+
+test('activity finishes a boss and linked quest once, and completed links open their own quest details',async({page})=>{
+ const state=fixture(); const q=state.quests[0]!; q.period='one-off';q.timeline='weekly';q.title='Finish the chapter';q.metric='manual';q.target=1;q.progress=0;q.status='active';q.objectives=[{id:'read-objective',title:'Read 30 minutes',ordinal:1,metric:'minutes',target:30,progress:0,activity_kind:'reading',attribute:'Intellect'}];
+ const b=customBoss('final','The final chapter');b.requirements=[{id:'activity',title:'Read for the boss',metric:'minutes',target:30,progress:0,activity_kind:'reading',failed:false},{id:'link',title:'Finish the linked quest',metric:'quest',target:1,progress:0,quest_id:q.id,failed:false}];state.bosses=[b];await mock(page,state);
+ await page.route('**/rest/v1/rpc/orion_command',async route=>{
+  const body=route.request().postDataJSON();expect(body.action).toBe('activity');
+  q.status='completed';q.completed_at=new Date().toISOString();q.progress=1;q.objectives![0]!.progress=30;b.requirements![0]!.progress=30;b.requirements![1]!.progress=1;b.remaining_health=0;b.status='victory';b.resolved_at=q.completed_at;
+  state.profile.xp+=1025;state.events.push({id:'quest-result',source:`quest:${q.id}`,xp:25,attributes:{Intellect:1},created_at:q.completed_at},{id:'encounter-result',source:`boss:${b.id}`,xp:1000,attributes:{Strength:15},created_at:q.completed_at});
+  await route.fulfill({json:{saved:true}});
+ });
+ await page.goto('/');await page.getByRole('button',{name:'View encounter',exact:true}).click();await expect(page.getByText('100 / 100 HP',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Open linked quest',exact:true}).click();await expect(page.getByRole('region',{name:'Quest details',exact:true})).toContainText('Finish the chapter');
+ await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Journal',exact:true}).click();
+ await page.getByLabel('Duration (minutes)',{exact:true}).fill('30');await page.getByRole('button',{name:'Save activity',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('Victory: The final chapter');await expect(page.getByRole('dialog')).toContainText('Quest complete: Finish the chapter');await page.getByRole('button',{name:'Continue',exact:true}).click();
+ await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Bosses',exact:true}).click();await page.getByRole('combobox',{name:'Encounters',exact:true}).selectOption('history');
+ await expect(page.getByText('0 / 100 HP',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Open linked quest',exact:true}).click();
+ await expect(page.getByRole('combobox',{name:'Quest status',exact:true})).toHaveValue('completed');await expect(page.getByRole('region',{name:'Quest details',exact:true})).toContainText('Finish the chapter');
+});
+test('abandoning a boss confirms failure, retains history, and cooldown leaves other encounters usable',async({page})=>{
+ const state=fixture();state.bosses=[customBoss('fail','The abandoned gate'),customBoss('keep','Keep fighting')];await mock(page,state);
+ await page.route('**/rest/v1/rpc/orion_command',async route=>{
+  const body=route.request().postDataJSON();expect(body.action).toBe('abandon_boss');const b=state.bosses.find(b=>b.id===body.payload.id)!;b.status='failure';b.resolved_at=new Date().toISOString();state.profile.xp-=250;state.events.push({id:'failure',source:`boss:${b.id}`,xp:-250,attributes:{Strength:-5},created_at:b.resolved_at});await route.fulfill({json:{saved:true}});
+ });
+ await page.goto('/');await page.locator('.dashboard-boss-entry').first().getByRole('button',{name:'View encounter',exact:true}).click();await page.getByRole('button',{name:'Abandon boss',exact:true}).click();
+ await expect(page.getByText('Abandoning applies the failure penalty immediately and starts a 24-hour cooldown. Other active bosses continue.')).toBeVisible();
+ await page.getByRole('button',{name:'Accept failure and abandon',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Create boss',exact:true})).toBeDisabled();await expect(page.getByRole('region',{name:'Boss details',exact:true})).toContainText('Keep fighting');
+ await expect(page.getByRole('checkbox',{name:'Complete Prepare your kit',exact:true})).toBeEnabled();await page.getByRole('combobox',{name:'Encounters',exact:true}).selectOption('history');
+ await expect(page.getByRole('region',{name:'Boss details',exact:true})).toContainText('The abandoned gate');await expect(page.getByRole('button',{name:'Abandon boss',exact:true})).toHaveCount(0);
 });

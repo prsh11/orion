@@ -11,6 +11,7 @@ export interface Profile {
 export interface Activity {
     id: string; kind: Kind; title: string; attribute: Attribute; minutes: number; metres: number;
     notes: string; occurred_at: string; recorded_at: string; daily_key: string | null; base_xp: number; base_points: number;
+    reward_version?: 1 | 2; reward_details?: Partial<ActivityReward>;
 }
 export interface Exercise { id: string; name: string; bodyweight: boolean; dumbbell: boolean }
 export interface WorkoutSet { id: string; activity_id: string; exercise_id: string; reps: number; kg: number; ordinal: number }
@@ -33,4 +34,6 @@ export interface Snapshot {
     quests: Quest[]; definitions: QuestDefinition[]; bosses: Boss[]; templates: BossTemplate[]; events: ProgressEvent[]; server_time: string; legacy_achievements?: string[];
 }
 export interface Command { id: string; action: string; payload: Record<string, unknown> }
-export interface CommandResult { saved?: boolean; personal_record?: boolean; deleted?: boolean }
+export interface PersonalRecord { exercise_id: string; exercise_name: string }
+export interface ActivityReward { base_xp: number; pr_xp: number; strength: number; records: PersonalRecord[] }
+export interface CommandResult { reward?: ActivityReward; saved?: boolean; personal_record?: boolean; deleted?: boolean }

@@ -1,3 +1,5 @@
+import { Panel } from './PageLayout';
+import RpgCheckbox, { CompletionButton } from './CompletionControl';
 import { useState } from 'react';
 import { useOrion } from './context';
 import { bestWeight, dayKey, fromKg, fromMetres, pace, volume } from './logic';
@@ -13,18 +15,19 @@ export function ActivityHistory({ journal = false }: { journal?: boolean }) {
     if (!data) return null;
     const imperial = data.profile.units === 'imperial';
     const rows = data.activities.filter(a => journal ? !['gym', 'running', 'cardio', 'other'].includes(a.kind) : ['gym', 'running', 'cardio', 'other'].includes(a.kind));
-    return <>{editing && <ActivityForm key={editing.id} journal={journal} edit={editing} onDone={() => setEditing(undefined)} />}<section className="panel"><h2>{journal ? 'Your journal' : 'Session history'}</h2>
+    return <>{editing && <ActivityForm key={`${editing.id}:${data.profile.units}:${data.profile.timezone}`} journal={journal} edit={editing} onDone={() => setEditing(undefined)} />}<Panel><h2>{journal ? 'Your journal' : 'Session history'}</h2>
         {!rows.length && <p className="empty">{journal ? 'A book, a conversation, a moment of focus. Your first entry starts here.' : 'Your first session is a starting point. Log it above.'}</p>}
         <div className="history">{rows.map(a => {
             const sets = data.sets.filter(s => s.activity_id === a.id).sort((x, y) => x.ordinal - y.ordinal);
             return <article className="history-entry" key={a.id}><div className="entry-heading"><div><time>{new Date(a.occurred_at).toLocaleString(undefined, { timeZone: data.profile.timezone, dateStyle: 'medium', timeStyle: 'short' })}</time><h3>{a.title}</h3></div><span className="attribute-tag"><GameIcon name={a.attribute} />{a.attribute}</span></div>
-                <p>{a.minutes > 0 ? `${a.minutes} min` : 'Daily completion'}{a.metres > 0 && ` · ${fromMetres(a.metres, imperial).toFixed(2)} ${imperial ? 'mi' : 'km'} · ${pace(a.minutes, a.metres, imperial)}`}{sets.length > 0 && ` · ${fromKg(volume(sets, data.exercises), imperial).toFixed(1)} ${imperial ? 'lb' : 'kg'} volume`}</p>
+                <p>{a.minutes > 0 ? `${a.minutes} min` : a.kind === 'gym' ? `${sets.length} completed sets` : 'Daily completion'}{a.metres > 0 && ` · ${fromMetres(a.metres, imperial).toFixed(2)} ${imperial ? 'mi' : 'km'} · ${pace(a.minutes, a.metres, imperial)}`}{sets.length > 0 && ` · ${fromKg(volume(sets, data.exercises), imperial).toFixed(1)} ${imperial ? 'lb' : 'kg'} volume`}</p>
+                {a.kind === 'gym' && a.reward_version === 2 && <p className="reward-preview">{a.reward_details?.base_xp ?? 0} workout XP{Boolean(a.reward_details?.pr_xp) && ` + ${a.reward_details?.pr_xp} PR XP`} · +{a.base_points} Strength</p>}
                 {a.notes && <p className="entry-notes">{a.notes}</p>}
                 {sets.length > 0 && <details><summary>{sets.length} completed sets</summary><ul>{sets.map(s => <li key={s.id}>{data.exercises.find(e => e.id === s.exercise_id)?.name}: {s.reps} reps × {fromKg(s.kg, imperial).toFixed(1)} {imperial ? 'lb' : 'kg'}</li>)}</ul></details>}
-                {!['habit', 'recovery'].includes(a.kind) && <div className="button-row"><button className="text-button" onClick={() => setEditing(a)}>Correct entry</button>{remove !== a.id ? <button className="text-button" onClick={() => setRemove(a.id)}>Delete</button> : <><span>Remove this entry and its base rewards?</span><button className="danger" disabled={busy} onClick={() => { void command('delete_activity', { id: a.id }).then(ok => { if (ok) setRemove(null); }); }}>Delete entry</button><button onClick={() => setRemove(null)}>Cancel</button></>}</div>}
+                {!['habit', 'recovery'].includes(a.kind) && <div className="button-row"><button className="text-button" onClick={() => setEditing(a)}>Correct entry</button>{remove !== a.id ? <button className="text-button" onClick={() => setRemove(a.id)}>Delete</button> : <><span>Remove this entry and its workout rewards?</span><button className="danger" disabled={busy} onClick={() => { void command('delete_activity', { id: a.id }).then(ok => { if (ok) setRemove(null); }); }}>Delete entry</button><button onClick={() => setRemove(null)}>Cancel</button></>}</div>}
             </article>;
         })}</div>
-    </section></>;
+    </Panel></>;
 }
 export function ExerciseLibrary() {
     const { data, command, busy } = useOrion();
@@ -33,27 +36,28 @@ export function ExerciseLibrary() {
     if (!data) return null;
     const imperial = data.profile.units === 'imperial';
     const exerciseSets = data.sets.filter(s => s.exercise_id === selected);
-    return <section className="panel"><h2>Exercise library</h2><label>Find an exercise<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
+    return <Panel><h2>Exercise library</h2><label>Find an exercise<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
         <div className="exercise-list">{data.exercises.filter(e => e.name.toLowerCase().includes(search.toLowerCase())).map(e => <button key={e.id} aria-pressed={selected === e.id} onClick={() => setSelected(e.id)}>{e.name}<span>{fromKg(bestWeight(data.sets, e.id), imperial).toFixed(1)} {imperial ? 'lb' : 'kg'} {e.bodyweight ? 'added weight best' : 'best'}</span></button>)}</div>
-        {selected && <div><h3>{data.exercises.find(e => e.id === selected)?.name} history</h3>{!exerciseSets.length && <p className="muted">No completed sets yet.</p>}<ul>{exerciseSets.map(s => <li key={s.id}>{new Date(data.activities.find(a => a.id === s.activity_id)?.occurred_at ?? '').toLocaleDateString()}: {s.reps} × {fromKg(s.kg, imperial).toFixed(1)} {imperial ? 'lb' : 'kg'}</li>)}</ul></div>}
-        <details><summary>Add a private exercise</summary><form onSubmit={e => { e.preventDefault(); const form = e.currentTarget; const f = new FormData(form); void command('exercise', { name: f.get('name'), bodyweight: f.has('bodyweight'), dumbbell: f.has('dumbbell') }).then(ok => { if (ok) form.reset(); }); }}><label>Name<input name="name" maxLength={100} required /></label><label className="check-label"><input type="checkbox" name="bodyweight" />Bodyweight (record added weight)</label><label className="check-label"><input type="checkbox" name="dumbbell" />Dumbbells (weight per dumbbell, volume counts both)</label><button disabled={busy}>Add exercise</button></form></details>
-    </section>;
+        {selected && <div><h3>{data.exercises.find(e => e.id === selected)?.name} history</h3>{!exerciseSets.length && <p className="muted">No completed sets yet.</p>}<ul>{exerciseSets.map(s => <li key={s.id}>{new Date(data.activities.find(a => a.id === s.activity_id)?.occurred_at ?? '').toLocaleDateString(undefined, { timeZone: data.profile.timezone })}: {s.reps} × {fromKg(s.kg, imperial).toFixed(1)} {imperial ? 'lb' : 'kg'}</li>)}</ul></div>}
+        <details><summary>Add a private exercise</summary><form className="form-content" onSubmit={e => { e.preventDefault(); const form = e.currentTarget; const f = new FormData(form); void command('exercise', { name: f.get('name'), bodyweight: f.has('bodyweight'), dumbbell: f.has('dumbbell') }).then(ok => { if (ok) form.reset(); }); }}><label>Name<input name="name" maxLength={100} required /></label><label className="check-label"><RpgCheckbox name="bodyweight" />Bodyweight (record added weight)</label><label className="check-label"><RpgCheckbox name="dumbbell" />Dumbbells (weight per dumbbell, volume counts both)</label><button disabled={busy}>Add exercise</button></form></details>
+    </Panel>;
 }
-export function DailyCare() {
-    const { data, command, busy } = useOrion();
+export function DailyCare({ compact = false, onManage }: { compact?: boolean; onManage?: () => void }) {
+    const { data, command, busy, pending } = useOrion();
     if (!data) return null;
     const today = dayKey(data.server_time, data.profile.timezone);
     const done = (key: string) => data.activities.some(a => a.daily_key === key + ':' + today);
     const completed = data.habits.filter(h => !h.archived && done('habit:' + h.id)).length;
-    return <section className="panel daily-care">
-        <div className="section-heading"><div><h2>Daily rhythm</h2><p className="muted">Small rituals. A stronger foundation.</p></div><span className="daily-summary">{completed} habits completed today</span></div>
+    const habits = data.habits.filter(h => !h.archived);
+    return <Panel id={compact ? undefined : "daily-rhythm"} tabIndex={-1} aria-label="Daily rhythm" className={`daily-care ${compact ? 'daily-care-compact' : ''}`}>
+        <div className="section-heading"><div><h2>Daily rhythm</h2>{!compact && <p className="muted">Small rituals. A stronger foundation.</p>}</div><span className="daily-summary">{completed} habits completed today</span>{compact && <button className="text-button" onClick={onManage}>Manage daily rhythm</button>}</div>
         <div className="care-columns">
             <div className="habit-section"><div className="subsection-heading"><h3>Your habits</h3><span>+5 XP / +1 Discipline</span></div>
                 {!data.habits.some(h => !h.archived) && <p className="muted">Add one small action you want to repeat.</p>}
-                {data.habits.filter(h => !h.archived).map(h => <div className={`daily-row ${done('habit:' + h.id) ? 'is-complete' : ''}`} key={h.id}><button className="habit-complete" aria-pressed={done('habit:' + h.id)} disabled={busy} onClick={() => { void command('complete_habit', { id: h.id, completed: !done('habit:' + h.id) }); }}><span className="completion-check" aria-hidden="true"><GameIcon name={done('habit:' + h.id) ? 'check' : 'Discipline'} /></span>{h.name}</button><button className="text-button" onClick={() => { void command('archive_habit', { id: h.id }); }} disabled={busy} aria-label={`Archive ${h.name}`}>Archive</button></div>)}
-                <form className="button-row habit-form" onSubmit={e => { e.preventDefault(); const form = e.currentTarget; const f = new FormData(form); void command('habit', { name: f.get('name') }).then(ok => { if (ok) form.reset(); }); }}><label className="grow">New habit<input name="name" required maxLength={100} placeholder="Read before bed" /></label><button disabled={busy}>Add habit</button></form>
+                {(compact ? habits.slice(0, 5) : habits).map(h => <div className={`daily-row ${done('habit:' + h.id) ? 'is-complete' : ''}`} key={h.id}><CompletionButton className="habit-complete" checked={done('habit:' + h.id)} pending={busy} uncertain={Boolean(pending)} disabled={busy || Boolean(pending)} onToggle={() => { void command('complete_habit', { id: h.id, completed: !done('habit:' + h.id) }); }}>{h.name}</CompletionButton>{!compact && <button className="text-button" onClick={() => { void command('archive_habit', { id: h.id }); }} disabled={busy || Boolean(pending)} aria-label={`Archive ${h.name}`}>Archive</button>}</div>)}
+                {!compact && <form className="button-row habit-form" onSubmit={e => { e.preventDefault(); const form = e.currentTarget; const f = new FormData(form); void command('habit', { name: f.get('name') }).then(ok => { if (ok) form.reset(); }); }}><label className="grow">New habit<input name="name" required maxLength={100} placeholder="Read before bed" /></label><button disabled={busy || Boolean(pending)}>Add habit</button></form>}{compact && habits.length > 5 && <p className="dashboard-overflow">{habits.length - 5} more habits in Journal</p>}
             </div>
-            <div className="recovery-section"><div className="subsection-heading"><h3>Recovery targets</h3><span>+10 XP / +1 Vitality</span></div><div className="recovery-grid">{['Water: 2 litres', 'Sleep: 8 hours', 'Mindfulness: 10 minutes', 'Balanced meals: 3'].map((target, i) => <button className={done('recovery:' + target) ? 'is-complete' : ''} key={target} aria-pressed={done('recovery:' + target)} disabled={busy} onClick={() => { void command('recovery', { target, completed: !done('recovery:' + target) }); }}><span className="recovery-symbol" aria-hidden="true"><GameIcon name={(['water', 'sleep', 'focus', 'meal'] as IconName[])[i]!} /></span><span>{target}</span><span className="recovery-check" aria-hidden="true"><GameIcon name={done('recovery:' + target) ? 'check' : 'orbit'} /></span></button>)}</div><p className="muted small">Click again to uncheck and reverse its base reward. Checking it again restores that reward.</p></div>
+            <div className="recovery-section"><div className="subsection-heading"><h3>Recovery targets</h3><span>+10 XP / +1 Vitality</span></div><div className="recovery-grid">{['Water: 2 litres', 'Sleep: 8 hours', 'Mindfulness: 10 minutes', 'Balanced meals: 3'].map((target, i) => <CompletionButton className={done('recovery:' + target) ? 'is-complete' : ''} key={target} checked={done('recovery:' + target)} pending={busy} uncertain={Boolean(pending)} disabled={busy || Boolean(pending)} onToggle={() => { void command('recovery', { target, completed: !done('recovery:' + target) }); }}><span className="recovery-symbol" aria-hidden="true"><GameIcon name={(['water', 'sleep', 'focus', 'meal'] as IconName[])[i]!} /></span><span>{target}</span></CompletionButton>)}</div>{!compact && <p className="muted small">Click again to uncheck and reverse its base reward. Checking it again restores that reward.</p>}</div>
         </div>
-    </section>;
+    </Panel>;
 }

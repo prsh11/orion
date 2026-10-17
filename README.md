@@ -80,8 +80,23 @@ same profile row. Command IDs and unique reward-source keys protect retries.
 These controls follow Supabase’s [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
 and [database function](https://supabase.com/docs/guides/database/functions) guidance.
 
-- Activities grant 10 XP per completed 10 minutes (maximum 60), and one relevant
-  attribute point per completed 30 minutes (maximum three).
+- New gym workouts need exercises and completed sets, with no duration field.
+  Each set earns `3 + floor(min(reps, 20) / 5)` XP, capped at 60 base XP per
+  workout. Every 40 counted reps grants one Strength point, capped at three;
+  each set contributes at most 20 counted reps. Eight sets of ten earn 40 XP/+2 Strength.
+- Gym PRs award 25 extra XP per exercise, capped at 75 bonus XP per workout.
+  A PR beats the previous maximum weight or previous reps at the same weight,
+  including zero added weight for bodyweight exercises. The first workout for an
+  exercise establishes its baseline. Only a new workout establishes bonus eligibility;
+  corrections may revoke/restore its original bonus, and deletion reverses its rewards.
+- Running, journal entries, and historical gym/cardio activities retain duration-based
+  rewards: 10 XP per completed ten minutes (maximum 60), and one relevant attribute
+  point per completed 30 minutes (maximum three). Existing rewards are not repriced.
+- New training offers Gym and Running. Running requires duration and distance;
+  title, notes, and date/time are optional details. Default training timestamps are
+  captured at save time in the profile timezone. Gym workouts store zero minutes,
+  so they advance workout-count objectives but not minute-based objectives.
+  Apply `202610160005_gym_rewards.sql` before deploying this logging UI.
 - Habits grant 5 XP and one Discipline point per habit/day. Recovery targets
   grant 10 XP and one Vitality point per target/day.
 - Cumulative XP thresholds are `floor(100 * (level - 1)^1.5)`. Ranks are E at

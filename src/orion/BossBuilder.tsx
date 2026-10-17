@@ -1,0 +1,74 @@
+import { useRevisionSaved } from './useRevisionSaved';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useOrion } from './context';
+import { ATTRIBUTES } from './types';
+import type { Attribute, Boss, BossAvatar, BossPeriod, Kind, QuestMetric } from './types';
+import { attributeFor, toMetres, fromMetres } from './logic';
+import { matchingKinds, questMetrics, questStatus } from './questLogic';
+import { bossDeadline, bossStakes } from './bossLogic';
+import { AvatarPicker } from './BossPortrait';
+import { BossTerms } from './BossVitals';
+import { FormSection, FormActions } from './FormLayout';
+import { useExperience } from './experience';
+interface RequirementDraft { id?: string; original_target?: number; original_display?: string; key: string; title: string; metric: QuestMetric | 'quest'; target: string; activity_kind: Kind | ''; attribute: Attribute | ''; quest_id: string }
+interface Draft { revision?: number; id: string; title: string; description: string; avatar: BossAvatar; period: BossPeriod; attributes: Attribute[]; requirements: RequirementDraft[] }
+const requirement = (): RequirementDraft => ({ key: crypto.randomUUID(), title: '', metric: 'checklist', target: '1', activity_kind: '', attribute: '', quest_id: '' });
+const fresh = (): Draft => ({ id: crypto.randomUUID(), title: '', description: '', avatar: 'dragon', period: 'weekly', attributes: ['Discipline'], requirements: [requirement()] });
+function validDraft(value: unknown): value is Draft {
+    if (!value || typeof value !== 'object') return false;
+    const d = value as Record<string, unknown>;
+    return (d.revision === undefined || (typeof d.revision === 'number' && Number.isInteger(d.revision) && d.revision >= 0)) && typeof d.id === 'string' && /^[a-f0-9-]{36}$/i.test(d.id) && typeof d.title === 'string' && typeof d.description === 'string'
+        && ['dragon', 'guardian', 'knight', 'spectral'].includes(String(d.avatar)) && Object.hasOwn(bossStakes, String(d.period))
+        && Array.isArray(d.attributes) && d.attributes.length >= 1 && d.attributes.length <= 2 && d.attributes.every(a => ATTRIBUTES.some(v => v === a))
+        && Array.isArray(d.requirements) && d.requirements.length >= 1 && d.requirements.length <= 20 && d.requirements.every((r: unknown) => {
+            if (!r || typeof r !== 'object') return false;
+            const row = r as Record<string, unknown>;
+            return (row.id === undefined || typeof row.id === 'string') && (row.original_target === undefined || typeof row.original_target === 'number') && (row.original_display === undefined || typeof row.original_display === 'string') && ['key', 'title', 'target', 'quest_id'].every(k => typeof row[k] === 'string') && (row.metric === 'quest' || Object.hasOwn(questMetrics, String(row.metric)))
+                && (row.activity_kind === '' || matchingKinds(row.metric as QuestMetric).some(k => k === row.activity_kind)) && (row.attribute === '' || ATTRIBUTES.some(a => a === row.attribute));
+        });
+}
+export default function BossBuilder({ onClose, edit }: { onClose: () => void; edit?: Boss }) {
+    const { data, command, busy, pending, error, retry, serverNow, refresh } = useOrion();
+    const { effectiveEffects } = useExperience();
+    const key = `orion-draft:${data?.profile.id}:boss${edit ? `:edit:${edit.id}` : ''}:${data?.profile.units}`;
+    const seed = (): Draft => edit ? { id: edit.id, revision: edit.edit_revision ?? 0, title: edit.title, description: edit.description ?? '', avatar: edit.avatar ?? 'dragon', period: edit.period ?? 'weekly', attributes: edit.attributes,
+        requirements: (edit.requirements ?? []).map(r => { const display = String(r.metric === 'metres' ? Number(fromMetres(r.target, data?.profile.units === 'imperial').toFixed(2)) : r.target); return { id: r.id, key: r.id, title: r.title, metric: r.metric, target: display, original_target: r.target, original_display: display, quest_id: r.quest_id ?? '', activity_kind: r.activity_kind ?? '', attribute: r.attribute ?? '' }; }),
+    } : fresh();
+    const [draft, setDraft] = useState<Draft>(() => { try { const value: unknown = JSON.parse(localStorage.getItem(key) ?? 'null'); if (validDraft(value)) return value; } catch { /* Keep a fresh draft. */ } return seed(); });
+    const [review, setReview] = useState<{ accepted_at: string; deadline: string } | null>(null);
+    const dialog = useRef<HTMLDialogElement>(null);
+    useEffect(() => { try { localStorage.setItem(key, JSON.stringify(draft)); } catch { /* The in-memory draft remains editable. */ } }, [key, draft]);
+    useEffect(() => { const el = dialog.current; const launcher = document.activeElement; const overflow = document.body.style.overflow; el?.showModal(); document.body.style.overflow = 'hidden'; return () => { el?.close(); document.body.style.overflow = overflow; if (launcher instanceof HTMLElement && launcher.isConnected) launcher.focus(); }; }, []);
+    const savedRevision = () => { try { localStorage.removeItem(key); } catch { /* The server has saved the revision. */ } onClose(); };
+    useRevisionSaved('revise_boss', edit?.id, savedRevision);
+    if (!data) return null;
+    const disabled = busy || Boolean(pending);
+    const stale = Boolean(edit && (edit.edit_revision ?? 0) !== (draft.revision ?? 0));
+    const imperial = data.profile.units === 'imperial';
+    const quests = data.quests.filter(q => q.kind !== 'todo' && (questStatus(q, data.server_time) === 'active' || edit?.requirements?.some(r => r.quest_id === q.id)));
+    const update = (patch: Partial<Draft>) => { setReview(null); setDraft(d => ({ ...d, ...patch })); };
+    const row = (key: string, patch: Partial<RequirementDraft>) => update({ requirements: draft.requirements.map(r => r.key === key ? { ...r, ...patch } : r) });
+    const accepted = !edit && data.bosses.some(b => b.id === draft.id);
+    const close = () => { if (accepted) { try { localStorage.removeItem(key); } catch { /* The saved encounter remains on the server. */ } } onClose(); };
+    return createPortal(<dialog ref={dialog} className="quest-dialog boss-dialog" data-effects={effectiveEffects} aria-labelledby="boss-builder-title" onCancel={e => { e.preventDefault(); close(); }}><div className="quest-dialog-scroll"><section className="panel quest-builder">
+        <header className="section-heading"><div><h2 id="boss-builder-title">{accepted ? 'Boss accepted' : edit ? 'Edit boss' : 'Create boss'}</h2><p>{edit ? 'Add missing goals and revise your encounter.' : 'Turn a challenge into an encounter.'}</p></div><button type="button" aria-label={edit ? 'Close boss editing' : 'Close boss creation'} onClick={close}>×</button></header>
+        {accepted ? <><p>Your encounter is saved. You can edit its goals and stakes while it is active.</p><button onClick={close}>View bosses</button></> : <><p hidden={!stale} role="status" className="feedback">This boss has a newer saved version. Reload the saved version before accepting changes.</p><form onSubmit={e => {
+            e.preventDefault();
+            if (!review) { const accepted_at = edit?.accepted_at ?? new Date(Math.floor(serverNow() / 1000) * 1000).toISOString(); const deadline = edit && draft.period === edit.period ? edit.deadline : bossDeadline(accepted_at, data.profile.timezone, draft.period); if (deadline) setReview({ accepted_at, deadline }); return; }
+            void command(edit ? 'revise_boss' : 'create_boss', { id: draft.id, ...(edit ? { revision: draft.revision ?? 0 } : {}), title: draft.title, description: draft.description, avatar: draft.avatar, period: draft.period, attributes: draft.attributes, accepted: true,
+                requirements: draft.requirements.map(r => ({ ...(edit && r.id ? { id: r.id } : {}), title: r.title, metric: r.metric, target: r.metric === 'quest' || r.metric === 'checklist' ? 1 : r.metric === 'metres' ? r.original_target !== undefined && r.original_display === r.target ? r.original_target : toMetres(Number(r.target), imperial) : Number(r.target), quest_id: r.metric === 'quest' ? r.quest_id : null, activity_kind: r.activity_kind || null, attribute: r.attribute || null })),
+            }).then(ok => { if (ok && edit) savedRevision(); });
+        }}>
+
+        <fieldset disabled={disabled}><div className="boss-draft-sections" hidden={Boolean(review)}><FormSection title="Your opponent"><label>Boss name<input required maxLength={120} value={draft.title} onChange={e => update({ title: e.target.value })} /></label><label>Description (optional)<textarea maxLength={2000} value={draft.description} onChange={e => update({ description: e.target.value })} /></label><AvatarPicker value={draft.avatar} onChange={avatar => update({ avatar })} /></FormSection>
+        <FormSection title="Period and stakes"><label>Period<select value={draft.period} onChange={e => update({ period: e.target.value as BossPeriod })}><option value="daily">Daily — one local calendar day</option><option value="weekly">Weekly — seven days</option><option value="monthly">Monthly — one calendar month</option><option value="yearly">Yearly — one calendar year</option></select></label><fieldset><legend>Reward attributes (choose one or two)</legend><div className="domain-options">{ATTRIBUTES.map(a => <label key={a}><input type="checkbox" checked={draft.attributes.includes(a)} disabled={!draft.attributes.includes(a) && draft.attributes.length === 2} onChange={e => update({ attributes: e.target.checked ? [...draft.attributes, a] : draft.attributes.filter(v => v !== a) })} />{a}</label>)}</div></fieldset><BossTerms stakes={bossStakes[draft.period]} attributes={draft.attributes} /></FormSection>
+        <FormSection title="Requirements"><p>Each requirement takes an equal share of 100 HP. Boss-owned tasks only earn the final boss reward. Linked quests keep their own rewards and existing progress.</p>{draft.requirements.map((r, i) => <fieldset className="objective-draft" key={r.key}><legend>Requirement {i + 1}</legend><label>Requirement title<input required maxLength={120} value={r.title} onChange={e => row(r.key, { title: e.target.value })} /></label><div className="form-grid"><label>Progress from<select value={r.metric} onChange={e => row(r.key, { metric: e.target.value as RequirementDraft['metric'], original_target: undefined, original_display: undefined, target: '1', activity_kind: '', attribute: '', quest_id: '' })}>{Object.entries(questMetrics).map(([key, label]) => <option key={key} value={key}>{label}</option>)}<option value="quest">Link active quest</option></select></label>
+        {r.metric === 'quest' ? <label>Active quest<select required value={r.quest_id} onChange={e => { const q = quests.find(q => q.id === e.target.value); row(r.key, { quest_id: e.target.value, title: q?.title ?? r.title }); }}><option value="">Choose a quest</option>{quests.filter(q => q.id === r.quest_id || !draft.requirements.some(v => v.quest_id === q.id)).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}</select></label> : r.metric !== 'checklist' && <label>Target {r.metric === 'metres' ? `(${imperial ? 'mi' : 'km'})` : ''}<input type="number" min={r.metric === 'metres' ? '0.01' : 1} step={r.metric === 'metres' || r.metric === 'minutes' ? '0.01' : 1} max={10000000} required value={r.target} onChange={e => row(r.key, { target: e.target.value })} /></label>}
+        {!['quest', 'manual', 'checklist'].includes(r.metric) && <><label>Activity filter<select value={r.activity_kind} onChange={e => row(r.key, { activity_kind: e.target.value as Kind | '', attribute: '' })}><option value="">Any matching activity</option>{matchingKinds(r.metric as QuestMetric).map(k => <option key={k}>{k}</option>)}</select></label><label>Attribute filter<select value={r.attribute} onChange={e => row(r.key, { attribute: e.target.value as Attribute | '' })}><option value="">Any attribute</option>{ATTRIBUTES.filter(a => matchingKinds(r.metric as QuestMetric, a).length && (!r.activity_kind || attributeFor(r.activity_kind) === a)).map(a => <option key={a}>{a}</option>)}</select></label></>}
+        </div><button type="button" className="text-button" disabled={draft.requirements.length === 1} onClick={() => update({ requirements: draft.requirements.filter(v => v.key !== r.key) })}>Remove requirement {i + 1}</button></fieldset>)}<button type="button" disabled={draft.requirements.length === 20} onClick={() => update({ requirements: [...draft.requirements, requirement()] })}>Add requirement</button></FormSection></div>
+        {review && <div className="boss-acceptance"><h3>{draft.title}</h3><p>Estimated deadline: {new Date(review.deadline).toLocaleString(undefined, { timeZone: data.profile.timezone })} ({data.profile.timezone})</p><p>{edit ? 'The period counts from original acceptance. Your manual progress is retained when the goal type is unchanged; activity goals and health recalculate. Rewards and penalties use the revised period and attributes.' : 'The period starts when you accept. The server freezes the final deadline from that instant.'}</p><ul>{draft.requirements.map(r => <li key={r.key}>{r.title}{r.metric === 'checklist' || r.metric === 'quest' ? '' : ` — ${r.target} ${r.metric === 'metres' ? imperial ? 'mi' : 'km' : r.metric}`}{r.metric === 'quest' ? ` (linked quest: ${quests.find(q => q.id === r.quest_id)?.title ?? 'Unavailable'})` : ''}{r.activity_kind ? ` / ${r.activity_kind}` : ''}{r.attribute ? ` / ${r.attribute}` : ''}</li>)}</ul><BossTerms stakes={bossStakes[draft.period]} attributes={draft.attributes} /><p>{edit ? 'Accept these revised requirements and stakes. Removing goals or reducing targets can defeat this boss immediately.' : 'Accept the requirements and stakes above.'} Failure or abandonment starts a 24-hour cooldown for new encounters. Existing encounters continue. Linked quests must finish before this deadline. Active encounters can be edited before resolution.</p><button type="button" onClick={() => setReview(null)}>{edit ? 'Continue editing' : 'Edit requirements'}</button></div>}
+        <FormActions><button className="boss-button" disabled={draft.attributes.length === 0 || stale} type="submit">{busy ? 'Saving…' : review ? edit ? 'Accept changes and stakes' : 'Accept boss and penalties' : edit ? 'Review changes' : 'Review acceptance'}</button></FormActions>{edit && <button className="text-button" type="button" onClick={() => { try { localStorage.removeItem(key); } catch { /* The next edit starts from confirmed data. */ } onClose(); void refresh(); }}>Discard draft and reload</button>}</fieldset></form></>}
+        {(error || pending) && <div className="error-banner" role="alert"><p>{error ?? 'Retry the unfinished save with its original request ID.'}</p><button disabled={busy} onClick={() => { void retry(); }}>Retry save</button></div>}
+    </section></div></dialog>, document.body);
+}

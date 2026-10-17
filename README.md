@@ -136,8 +136,9 @@ and [database function](https://supabase.com/docs/guides/database/functions) gui
   XP (rounded up) and one selected attribute point. An existing medium late one-off quest nets
   18 XP and zero attribute points. Merely becoming overdue never deducts rewards.
 - Existing undated one-off quests stay open; dated quests stay actionable when overdue.
-  Archiving closes a one-off without rewards. One-off terms are fixed, with title
-  corrections allowed. Recurring edits affect future instances only. Rewards and
+  Archiving closes a one-off without rewards. Legacy text commands allow title
+  corrections; the full editor can revise an active one-off into a structured quest.
+  Historical recurring edits affect future instances only. Rewards and
   penalties are stored on instances and included in completion history and exports.
 - Automatic one-off progress requires activity performed and recorded after task
   creation. Imported activity is excluded. Calendar recurrence uses the profile
@@ -150,9 +151,10 @@ and [database function](https://supabase.com/docs/guides/database/functions) gui
   1,000 XP/+15 each; failure deducts 250 XP/5 each. Abandoning is failure. XP
   floors at zero and attributes at one; displayed level/rank always follow XP.
 - Only activities both performed and recorded within `[accepted_at, deadline)`
-  count for bosses. Outcomes are final. One active boss, one attempt per template
-  per calendar period, and a 24-hour cooldown after failure are enforced on the
-  server. Rewards, penalties, and fixed objectives appear before acceptance.
+  count for bosses. Outcomes are final. Multiple bosses can be active, with one
+  attempt per template per calendar period and a 24-hour cooldown after failure.
+  The server enforces these rules. Goals, rewards and penalties appear before
+  acceptance and before explicitly accepting revisions to active encounters.
 
 Weights persist in kg, distances in metres. Imperial display converts on entry
 and presentation. Dumbbell weight is **per dumbbell**, with both dumbbells
@@ -327,3 +329,86 @@ kept close to the interface palette.
 Artwork is static; reward effects still follow the existing reduced-motion and
 Full/Reduced/Off preferences. Relics are decorative, with no equipment ownership,
 bonuses, avatar customization, or new progression rules.
+
+### Custom boss encounters
+
+The Bosses page supports several active encounters, each with its own name,
+portrait, deadline, fixed stakes, and up to 20 equally weighted requirements.
+Create checkbox tasks, manual counts, filtered activity objectives, or links to
+active quests. Linked quests keep their previous progress and independent rewards;
+boss-owned requirements grant only the encounter’s final reward. Active encounters
+can be revised with an explicit review of the new goals, deadline, rewards and
+penalties. Resolved outcomes keep their final goals, progress and stakes.
+
+Every requirement has an equal share of 100 HP. Automatic progress deals gradual
+damage; manual corrections and unchecked tasks can restore health while an
+encounter is active. Only confirmed victory displays zero HP. Resolved encounters
+retain their final progress in history.
+
+| Period from acceptance | Victory XP | Failure XP | Each selected attribute (victory / failure) |
+| --- | ---: | ---: | ---: |
+| One local calendar day | +250 | −75 | +5 / −2 |
+| Seven local calendar days | +1,000 | −250 | +15 / −5 |
+| One calendar month | +3,000 | −750 | +30 / −10 |
+| One calendar year | +12,000 | −3,000 | +100 / −25 |
+
+The acceptance review shows the period, estimated deadline, requirements and
+stakes. The server captures the acceptance instant and freezes the resulting UTC
+deadline in the profile timezone, preserving calendar wall time across DST and
+clamping month/year ends. Activities must be performed and recorded inside the
+exclusive accepted interval. Corrections recorded after a deadline cannot add an
+eligible contribution. Linked quests must qualify before the boss deadline;
+completion eligibility and settlement timestamps are stored separately so delayed
+cron settlement can still confirm an on-time victory.
+
+Expired or abandoned quest links fail their requirement. The boss penalty applies
+at its deadline or upon explicit boss abandonment. Failure starts a 24-hour cooldown
+for accepting new encounters; other active encounters continue. Existing XP and
+attribute floors still apply. Classic template encounters retain their original
+attempt restrictions and 24-hour/seven-day durations.
+
+Apply `202610170001_custom_bosses.sql` after the gym migration before deploying
+this UI. The established minute cron also settles quest progress before boss
+outcomes without an open browser. Portrait prompts are recorded in
+`src/assets/rpg/bosses/PROMPTS.md`.
+
+Activity clock correction: apply `supabase/migrations/202610170002_activity_server_clock.sql`
+after the custom bosses migration. New default-time training and journal entries use the
+server save time; explicitly chosen historical dates retain their UTC instant. Browser
+date previews and validation advance confirmed server time with a monotonic clock.
+Existing records are never rewritten automatically. If a wrong device clock excluded a
+run from an active boss, open Training history, correct that entry, and use **Use logging
+time** only if its original logging time reflects when the activity was performed.
+Save the correction; do not log the same run again.
+
+Boss combat feedback compares confirmed snapshots: activity saves and requirement
+updates show each affected boss’s HP change, including health restored by corrections.
+Victories use the selected portrait, a final health drain, and a defeat seal in the
+shared reward dialog; simultaneous quest, level, and boss rewards stay together.
+Initial loads and background refreshes never stage attacks. Reduced/off effects and
+the system reduced-motion preference keep the same information without motion.
+
+
+### Editing active quests and bosses
+
+Apply `supabase/migrations/202610170003_encounter_editing.sql` after the activity
+clock migration. Open a quest or boss and choose **Edit quest** or **Edit boss**.
+The same creation forms now support adding/removing subparts, changing goal types,
+targets and filters, and revising timelines, difficulty, reward attributes and avatars.
+Quest rewards follow the selected timeline and difficulty; boss rewards and penalties
+follow the selected period. Review and explicitly accept revised terms before saving.
+
+Acceptance never restarts. Unchanged periods retain their frozen UTC deadline;
+new periods count from original acceptance in the profile timezone. Quests also
+support custom deadlines. Automatic activity progress recalculates over that window.
+Existing manual goals retain their count when their type is unchanged, clamped to
+any reduced target; new goals or changed manual types start at zero. Linked quests
+retain their own progress and rewards. Existing completed links can stay, but new
+links must still be active. Removing goals or lowering targets may complete an
+encounter immediately, granting the recalculated reward once.
+
+Completed, expired and abandoned quests and resolved bosses cannot change goals
+or rewards. Text and appearance corrections remain available. Edits use version
+checks and the command ledger so stale tabs cannot overwrite newer accepted terms,
+and uncertain retries cannot duplicate revisions or rewards. Browser edit drafts
+stay separate per account, encounter and unit preference.

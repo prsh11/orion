@@ -22,7 +22,11 @@
     --primary-ink:#091a26;
     --reward-face:#efc185;
     --reward-edge:#805321;
-    --frame-radius:4px 16px 4px 16px;
+    --frame-radius:3px 12px 3px 12px;
+    --frame-border:color-mix(in srgb,var(--control-border) 60%,var(--line));
+    --frame-highlight:color-mix(in srgb,var(--text) 12%,transparent);
+    --frame-bracket:color-mix(in srgb,var(--control-border) 75%,var(--text));
+    --frame-bevel:inset 0 1px var(--frame-highlight),inset 0 -2px var(--control-shadow);
     --pixel-edge:#090e1a;
     --pixel-shine:#f4f7ff;
     --strength:#f2a48e;

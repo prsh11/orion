@@ -327,3 +327,44 @@ kept close to the interface palette.
 Artwork is static; reward effects still follow the existing reduced-motion and
 Full/Reduced/Off preferences. Relics are decorative, with no equipment ownership,
 bonuses, avatar customization, or new progression rules.
+
+### Custom boss encounters
+
+The Bosses page supports several active encounters, each with its own name,
+portrait, deadline, fixed stakes, and up to 20 equally weighted requirements.
+Create checkbox tasks, manual counts, filtered activity objectives, or links to
+active quests. Linked quests keep their previous progress and independent rewards;
+boss-owned requirements grant only the encounter’s final reward. Appearance and
+text remain editable after acceptance; requirements and stakes remain fixed.
+
+Every requirement has an equal share of 100 HP. Automatic progress deals gradual
+damage; manual corrections and unchecked tasks can restore health while an
+encounter is active. Only confirmed victory displays zero HP. Resolved encounters
+retain their final progress in history.
+
+| Period from acceptance | Victory XP | Failure XP | Each selected attribute (victory / failure) |
+| --- | ---: | ---: | ---: |
+| One local calendar day | +250 | −75 | +5 / −2 |
+| Seven local calendar days | +1,000 | −250 | +15 / −5 |
+| One calendar month | +3,000 | −750 | +30 / −10 |
+| One calendar year | +12,000 | −3,000 | +100 / −25 |
+
+The acceptance review shows the period, estimated deadline, requirements and
+stakes. The server captures the acceptance instant and freezes the resulting UTC
+deadline in the profile timezone, preserving calendar wall time across DST and
+clamping month/year ends. Activities must be performed and recorded inside the
+exclusive accepted interval. Corrections recorded after a deadline cannot add an
+eligible contribution. Linked quests must qualify before the boss deadline;
+completion eligibility and settlement timestamps are stored separately so delayed
+cron settlement can still confirm an on-time victory.
+
+Expired or abandoned quest links fail their requirement. The boss penalty applies
+at its deadline or upon explicit boss abandonment. Failure starts a 24-hour cooldown
+for accepting new encounters; other active encounters continue. Existing XP and
+attribute floors still apply. Classic template encounters retain their original
+attempt restrictions and 24-hour/seven-day durations.
+
+Apply `202610170001_custom_bosses.sql` after the gym migration before deploying
+this UI. The established minute cron also settles quest progress before boss
+outcomes without an open browser. Portrait prompts are recorded in
+`src/assets/rpg/bosses/PROMPTS.md`.

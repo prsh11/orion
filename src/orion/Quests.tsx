@@ -56,7 +56,9 @@ function MissionDossier({ quest: q }: { quest: Quest }) {
 }
 export default function Quests({ initialQuestId }: { initialQuestId?: string }) {
     const { data } = useOrion();
-    const [view, setView] = useState<'active' | 'completed' | 'past'>('active');
+    const initialQuest = data?.quests.find(q => q.id === initialQuestId);
+    const initialStatus = initialQuest && data ? questStatus(initialQuest, data.server_time) : 'active';
+    const [view, setView] = useState<'active' | 'completed' | 'past'>(initialStatus === 'expired' || initialStatus === 'abandoned' ? 'past' : initialStatus);
     const [selected, setSelected] = useState(initialQuestId ?? '');
     const [creating, setCreating] = useState(false);
     const detail = useRef<HTMLDivElement>(null);
